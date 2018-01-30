@@ -22,7 +22,7 @@ FASTLED_USING_NAMESPACE
 extern struct CRGB *leds;
 
 // Uncomment to enable printing debug messages.
-//#define DST_DEBUG
+#define DST_DEBUG
 #define DEBUG_PRINTER Serial
 #ifdef DST_DEBUG
 #define DEBUG_PRINT(...)                  \
