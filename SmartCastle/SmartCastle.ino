@@ -245,8 +245,10 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 	addGroup("All Castle LEDs", 8, pixelCount - 8, 0);
 
 	DEBUG_PRINTLN("Adding groups for room.");
-	addGroup("Room 1", 8, 64, 0);
-	addGroup("Room 2", 8 + 64, 64, 0);
+	addGroup("Room 1", 8 + 0, 32, 0);
+	addGroup("Room 2", 8 + 32, 32, 0);
+	addGroup("Room 3", 8 + 64, 32, 0);
+	addGroup("Room 4", 8 + 96, 32, 0);
 	/*
 	DEBUG_PRINTLN("Adding groups for room.");
 	addGroup("Room 1", 8, 8, 0);
@@ -300,10 +302,13 @@ int addGroup(String grpId, int ledFirst, int ledCount, int ledOffset)
 	// V2: NeoGroup w/o new
 	NeoGroup newGroup = NeoGroup(grpId, ledFirst, ledCount, ledOffset);
 	neoGroups.push_back(newGroup);
+
 	currFxNr.push_back(defaultFxNr);
 	currColNr.push_back(defaultColNr);
 	currFps.push_back(defaultFps);
 	currGlitter.push_back(defaultGlitter);
+
+	groupCount = constrain(neoGroups.size() - groupOffset, 0, 255); // Don't count main groups (all LEDs)
 	return neoGroups.size();
 }
 
@@ -654,14 +659,10 @@ void changeToRoom(int roomNo = -1)
 	DEBUG_PRINT(currGrpNr);
 	DEBUG_PRINTLN(".");
 }
-void onButtonRoom1()
-{
-	changeToRoom(1);
-}
-void onButtonRoom2()
-{
-	changeToRoom(2);
-}
+void onButtonRoom1() { changeToRoom(1); }
+void onButtonRoom2() { changeToRoom(2); }
+void onButtonRoom3() { changeToRoom(3); }
+void onButtonRoom4() { changeToRoom(4); }
 
 void setup()
 {
@@ -701,6 +702,8 @@ void setup()
 	DEBUG_PRINTLN("PCF8574: attaching button triggers.");
 	expander.attachInterrupt(0, onButtonRoom1, FALLING);
 	expander.attachInterrupt(1, onButtonRoom2, FALLING);
+	expander.attachInterrupt(2, onButtonRoom3, FALLING);
+	expander.attachInterrupt(3, onButtonRoom4, FALLING);
 
 	//InitWifi();
 	/*
@@ -720,18 +723,21 @@ void setup()
 	DEBUG_PRINTLN("FastLED: Starting LED strip");
 	startStrip();
 
+/*
 	DEBUG_PRINTLN("FastLED: Setting up and starting single group");
-	/*
 	SetEffect(currGrpNr, defaultFxNr);
 	SetColors(currGrpNr, defaultColNr);
 	startGroup(currGrpNr);
 */
-	SetEffect(3, defaultFxNr);
-	SetColors(3, defaultColNr);
-	SetEffect(4, defaultFxNr);
-	SetColors(4, defaultColNr);
-	startGroup(3);
-	startGroup(4);
+	for (int i = groupOffset + 1; i < neoGroups.size(); i++)
+	{
+		DEBUG_PRINT("FastLED: Setting up and starting group #");
+		DEBUG_PRINTLN(i);
+		SetEffect(i, defaultFxNr, false);
+		SetColors(i, defaultColNr);
+		startGroup(i);
+	}
+	currGrpNr = groupOffset + 1;
 }
 
 // Main loop
