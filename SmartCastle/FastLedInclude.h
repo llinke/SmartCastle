@@ -11,10 +11,10 @@
 #include <FastLED.h>
 FASTLED_USING_NAMESPACE
 
-#define PIXEL_PIN D1
+#define PIXEL_PIN D3
 #define PIXEL_TYPE NEOPIXEL
 
-#define PIXEL_COUNT 72
+#define PIXEL_COUNT 136
 
 #define BUTTON_PIN_FX D5
 #define BUTTON_PIN_COL D6

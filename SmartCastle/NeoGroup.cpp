@@ -451,13 +451,22 @@ class NeoGroup
 	{
 		CRGB newColor = ColorFromPalette(colorPalette, 0);
 		fill_solid(LedFirst, LedCount, newColor);
+		for (int i = 0; i < LedCount; i++)
+		{
+			SetPixel((LedCount - 1) - i, newColor);
+		}
 		//Stop();
 	}
 
 	void FxFade()
 	{
 		CRGB newColor = ColorFromPalette(colorPalette, fxStep);
-		fill_solid(LedFirst, LedCount, newColor);
+		//fill_solid(LedFirst, LedCount, newColor);
+		for (int i = 0; i < LedCount; i++)
+		{
+			SetPixel((LedCount - 1) - i, newColor);
+		}
+
 		NextFxStep();
 	}
 

@@ -244,6 +244,9 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 	// Group 2: all LEDs
 	addGroup("All Castle LEDs", 8, pixelCount - 8, 0);
 
+	DEBUG_PRINTLN("Adding groups for room.");
+	addGroup("Room 1", 8, 64, 0);
+	addGroup("Room 2", 8 + 64, 64, 0);
 	/*
 	DEBUG_PRINTLN("Adding groups for room.");
 	addGroup("Room 1", 8, 8, 0);
@@ -635,6 +638,9 @@ void onButtonCol()
 
 void changeToRoom(int roomNo = -1)
 {
+	DEBUG_PRINT("PCF8574: switching to room ");
+	DEBUG_PRINT(roomNo);
+	DEBUG_PRINT("->");
 	if (roomNo < 0)
 	{
 		currGrpNr++;
@@ -643,16 +649,18 @@ void changeToRoom(int roomNo = -1)
 	}
 	else
 	{
-		currGrpNr = constrain(roomNo, groupOffset, groupOffset + groupCount - 1);
+		currGrpNr = constrain(groupOffset + roomNo, groupOffset, groupOffset + groupCount - 1);
 	}
-}
-void onButtonRoom0()
-{
-	changeToRoom(0);
+	DEBUG_PRINT(currGrpNr);
+	DEBUG_PRINTLN(".");
 }
 void onButtonRoom1()
 {
 	changeToRoom(1);
+}
+void onButtonRoom2()
+{
+	changeToRoom(2);
 }
 
 void setup()
@@ -672,26 +680,27 @@ void setup()
 	DEBUG_PRINT("PCF8574: setting bus speed to ");
 	DEBUG_PRINT(I2C_BUS_SPEED);
 	DEBUG_PRINTLN(".");
+	Wire.begin(I2C_SDA_PIN, I2C_SDC_PIN);
 	Wire.setClock(I2C_BUS_SPEED);
-
-	DEBUG_PRINTLN("PCF8574: setting PINs.");
-	expander.pinMode(0, INPUT_PULLUP); // Goal 1, button
-	expander.pinMode(1, INPUT_PULLUP); // Goal 1, sensor
-
-	DEBUG_PRINTLN("PCF8574: attaching ISR handler.");
-	//expander.enableInterrupt(I2C_INT_PIN, ISRgateway);
-	pinMode(I2C_INT_PIN, INPUT_PULLUP);
-	attachInterrupt(I2C_INT_PIN, ISRgateway, FALLING);
-
-	DEBUG_PRINTLN("PCF8574: attaching goal triggers.");
-	expander.attachInterrupt(0, onButtonRoom0, FALLING);
-	expander.attachInterrupt(1, onButtonRoom1, FALLING);
 
 	DEBUG_PRINT("PCF8574: use I2C address ");
 	DEBUG_PRINT(I2C_EXPANDER_ADDRESS);
 	DEBUG_PRINTLN(".");
 	DEBUG_PRINTLN("PCF8574: start listening.");
 	expander.begin(I2C_EXPANDER_ADDRESS);
+
+	DEBUG_PRINTLN("PCF8574: setting PINs.");
+	expander.pinMode(0, INPUT_PULLUP);
+	expander.pinMode(1, INPUT_PULLUP);
+
+	DEBUG_PRINTLN("PCF8574: attaching ISR handler.");
+	//expander.enableInterrupt(I2C_INT_PIN, ISRgateway);
+	pinMode(I2C_INT_PIN, INPUT_PULLUP);
+	attachInterrupt(I2C_INT_PIN, ISRgateway, FALLING);
+
+	DEBUG_PRINTLN("PCF8574: attaching button triggers.");
+	expander.attachInterrupt(0, onButtonRoom1, FALLING);
+	expander.attachInterrupt(1, onButtonRoom2, FALLING);
 
 	//InitWifi();
 	/*
@@ -712,9 +721,17 @@ void setup()
 	startStrip();
 
 	DEBUG_PRINTLN("FastLED: Setting up and starting single group");
+	/*
 	SetEffect(currGrpNr, defaultFxNr);
 	SetColors(currGrpNr, defaultColNr);
 	startGroup(currGrpNr);
+*/
+	SetEffect(3, defaultFxNr);
+	SetColors(3, defaultColNr);
+	SetEffect(4, defaultFxNr);
+	SetColors(4, defaultColNr);
+	startGroup(3);
+	startGroup(4);
 }
 
 // Main loop
