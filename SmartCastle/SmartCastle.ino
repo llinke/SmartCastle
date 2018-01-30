@@ -5,6 +5,8 @@
 * Date:
 */
 
+#include "SerialDebug.h"
+#include "I2CInclude.h"
 #include "FastLedInclude.h"
 #include "ColorPalettes.h"
 #include <Arduino.h>
@@ -25,16 +27,18 @@
 // Device 'SmartCastle':
 const char blynkAuth[] = "4abfe0577ae745aca3d5d5d9f37911b7";
 */
-const String wifiApName = "AP_SmartCastle";
-
-//SYSTEM_MODE(AUTOMATIC);
-
-const int ConfigureAPTimeout = 10;
-
-//int ByteReceived;
 
 // Helper macro
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
+
+// **************************************************
+// *** Variable and Constamts  Declarations
+// **************************************************
+const String wifiApName = "AP_SmartCastle";
+const int ConfigureAPTimeout = 10;
+//int ByteReceived;
+
+volatile bool buttonPressedOnI2C = false;
 
 // Static size
 //struct CRGB leds[PIXEL_COUNT];
@@ -54,10 +58,11 @@ const int defaultFps = 50; //25;
 std::vector<int> currFps;
 const int defaultGlitter = 0; //32;
 std::vector<int> currGlitter;
-int currGrpNr = 2;
 
 //std::vector<NeoGroup *> neoGroups;
 std::vector<NeoGroup> neoGroups;
+int groupOffset = 2;
+int currGrpNr = groupOffset;
 int groupCount = 0;
 
 int globalBrightness = 64;
@@ -602,6 +607,19 @@ BLYNK_APP_CONNECTED()
 }
 */
 
+// **************************************************
+// *** Event Handlers (Buttons, Tickers)
+// **************************************************
+// [I2C Expander Interrupt Service Routine]
+void ISRgateway()
+{
+	//os_intr_lock();
+	buttonPressedOnI2C = true;
+	//expander.checkForInterrupt();
+	//DEBUG_PRINTLN("PCF8574: change of buttons' state detected in ISRgateway.");
+	//os_intr_unlock();
+}
+
 void onButtonFx()
 {
 	buttonFxPressed = true;
@@ -615,17 +633,65 @@ void onButtonCol()
 		bothButtonsPressed = true;
 }
 
+void changeToRoom(int roomNo = -1)
+{
+	if (roomNo < 0)
+	{
+		currGrpNr++;
+		if (currGrpNr >= (groupCount + groupOffset))
+			currGrpNr = groupOffset;
+	}
+	else
+	{
+		currGrpNr = constrain(roomNo, groupOffset, groupOffset + groupCount - 1);
+	}
+}
+void onButtonRoom0()
+{
+	changeToRoom(0);
+}
+void onButtonRoom1()
+{
+	changeToRoom(1);
+}
+
 void setup()
 {
 	Serial.begin(115200);
 
-	InitColorNames();
-	maxColNr = ColorNames.size();
+	DEBUG_PRINTLN("BOOT/SETUP ------------------------------------------------");
+	DEBUG_PRINTLN("Setup: Setting up SmartCastle for Arduino");
 
+	DEBUG_PRINTLN("Setup: directly attaching buttons");
 	pinMode(BUTTON_PIN_FX, INPUT_PULLUP);
 	attachInterrupt(BUTTON_PIN_FX, onButtonFx, FALLING);
 	pinMode(BUTTON_PIN_COL, INPUT_PULLUP);
 	attachInterrupt(BUTTON_PIN_COL, onButtonCol, FALLING);
+
+	// Wire buttons and events (I2C or directly connected)
+	DEBUG_PRINT("PCF8574: setting bus speed to ");
+	DEBUG_PRINT(I2C_BUS_SPEED);
+	DEBUG_PRINTLN(".");
+	Wire.setClock(I2C_BUS_SPEED);
+
+	DEBUG_PRINTLN("PCF8574: setting PINs.");
+	expander.pinMode(0, INPUT_PULLUP); // Goal 1, button
+	expander.pinMode(1, INPUT_PULLUP); // Goal 1, sensor
+
+	DEBUG_PRINTLN("PCF8574: attaching ISR handler.");
+	//expander.enableInterrupt(I2C_INT_PIN, ISRgateway);
+	pinMode(I2C_INT_PIN, INPUT_PULLUP);
+	attachInterrupt(I2C_INT_PIN, ISRgateway, FALLING);
+
+	DEBUG_PRINTLN("PCF8574: attaching goal triggers.");
+	expander.attachInterrupt(0, onButtonRoom0, FALLING);
+	expander.attachInterrupt(1, onButtonRoom1, FALLING);
+
+	DEBUG_PRINT("PCF8574: use I2C address ");
+	DEBUG_PRINT(I2C_EXPANDER_ADDRESS);
+	DEBUG_PRINTLN(".");
+	DEBUG_PRINTLN("PCF8574: start listening.");
+	expander.begin(I2C_EXPANDER_ADDRESS);
 
 	//InitWifi();
 	/*
@@ -633,16 +699,19 @@ void setup()
 		InitBlynk();
 	*/
 
-	DEBUG_PRINTLN("BOOT/SETUP ------------------------------------------------");
-	DEBUG_PRINTLN("Setup: Setting up SmartCastle for Arduino");
-	DEBUG_PRINTLN("Setup: Initializing LED strip");
+	DEBUG_PRINTLN("FastLED: Initializing color palettes");
+	InitColorNames();
+	maxColNr = ColorNames.size();
+
+	DEBUG_PRINTLN("FastLED: Initializing LED strip");
 	initStrip(pixelCount, true, true);
-	DEBUG_PRINT("Setup: Amount of LEDs: ");
+	DEBUG_PRINT("FastLED: Amount of LEDs: ");
 	DEBUG_PRINTLN(pixelCount);
 
-	DEBUG_PRINTLN("Setup: Starting LED strip");
+	DEBUG_PRINTLN("FastLED: Starting LED strip");
 	startStrip();
 
+	DEBUG_PRINTLN("FastLED: Setting up and starting single group");
 	SetEffect(currGrpNr, defaultFxNr);
 	SetColors(currGrpNr, defaultColNr);
 	startGroup(currGrpNr);
@@ -651,6 +720,14 @@ void setup()
 // Main loop
 void loop()
 {
+	// Evaluate expander pins and execute attached callbacks
+	if (buttonPressedOnI2C)
+	{
+		buttonPressedOnI2C = false;
+		DEBUG_PRINTLN("PCF8574: change of buttons' state detected in ISRgateway.");
+		expander.checkForInterrupt();
+	}
+
 	//DEBUG_PRINTLN("LOOP ------------------------------------------------------");
 	bool btnFxReleased = buttonFxPressed && !digitalRead(BUTTON_PIN_FX);
 	bool btnColReleased = buttonColPressed && !digitalRead(BUTTON_PIN_COL);
@@ -704,7 +781,7 @@ void loop()
 
 	bool isActiveMainGrp = false;
 	bool ledsUpdated = false;
-	for (int i = 2; i < neoGroups.size(); i++)
+	for (int i = groupOffset; i < neoGroups.size(); i++)
 	{
 		NeoGroup *neoGroup = &(neoGroups.at(i));
 		if (neoGroup->LedCount <= pixelCount)
@@ -714,9 +791,9 @@ void loop()
 			ledsUpdated |= neoGroup->Update();
 		}
 
-		if (i == 2)
+		if (i == groupOffset)
 			isActiveMainGrp = neoGroup->Active;
-		if (i > 2 && isActiveMainGrp)
+		if (i > groupOffset && isActiveMainGrp)
 			break; // Don't update other groups if main group (all LEDs) is active
 	}
 	if (ledsUpdated)
@@ -740,5 +817,5 @@ void loop()
 	}
 	*/
 	//pixelCount = count; //PIXEL_COUNT;
-	groupCount = neoGroups.size() - 3; // Don't count main groups (all LEDs)
+	groupCount = neoGroups.size() - groupOffset; // Don't count main groups (all LEDs)
 }
