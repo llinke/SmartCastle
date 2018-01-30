@@ -62,6 +62,10 @@ int groupCount = 0;
 
 int globalBrightness = 64;
 
+static bool buttonFxPressed = false;
+static bool buttonColPressed = false;
+static bool bothButtonsPressed = false;
+
 bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 {
 	Serial.println("WIFI ------------------------------------------------------");
@@ -594,6 +598,19 @@ BLYNK_APP_CONNECTED()
 }
 */
 
+void onButtonFx()
+{
+	buttonFxPressed = true;
+	if (buttonFxPressed && buttonColPressed)
+		bothButtonsPressed = true;
+}
+void onButtonCol()
+{
+	buttonColPressed = true;
+	if (buttonFxPressed && buttonColPressed)
+		bothButtonsPressed = true;
+}
+
 void setup()
 {
 	Serial.begin(115200);
@@ -602,7 +619,9 @@ void setup()
 	maxColNr = ColorNames.size();
 
 	pinMode(BUTTON_PIN_FX, INPUT_PULLUP);
+	attachInterrupt(BUTTON_PIN_FX, onButtonFx, FALLING);
 	pinMode(BUTTON_PIN_COL, INPUT_PULLUP);
+	attachInterrupt(BUTTON_PIN_COL, onButtonCol, FALLING);
 
 	//InitWifi();
 	/*
@@ -628,18 +647,18 @@ void setup()
 // Main loop
 void loop()
 {
-	static bool buttonFxPressed = false;
-	static bool buttonColPressed = false;
-	static bool bothButtonsPressed = false;
 	//Serial.println("LOOP ------------------------------------------------------");
-	bool btnFxPressed = !digitalRead(BUTTON_PIN_FX);
-	bool btnColPressed = !digitalRead(BUTTON_PIN_COL);
+	bool btnFxReleased = buttonFxPressed && !digitalRead(BUTTON_PIN_FX);
+	bool btnColReleased = buttonColPressed && !digitalRead(BUTTON_PIN_COL);
 	if (bothButtonsPressed &&
-		(!btnFxPressed | !btnColPressed) /*&&
+		(btnFxReleased | btnColReleased) /*&&
 		WiFi.status() != WL_CONNECTED*/) // Both buttons pressed
 	{
 		Serial.println("Loop: both buttons pressed, entering WiFi-setup.");
 		InitWifi(false, true);
+		buttonColPressed = false;
+		buttonFxPressed = false;
+		bothButtonsPressed = false;
 		/*
 		if (InitWifi(false, true))
 			InitBlynk();
@@ -647,15 +666,17 @@ void loop()
 	}
 	else
 	{
-		if (buttonFxPressed && !btnFxPressed) // Button was released
+		if (buttonFxPressed && btnFxReleased) // Button was released
 		{
 			Serial.println("Loop: button 'FX' pressed and released.");
 			NextEffect();
+			buttonFxPressed = false;
 		}
-		if (buttonColPressed && !btnColPressed) // Button was released
+		if (buttonColPressed && btnColReleased) // Button was released
 		{
 			Serial.println("Loop: button 'colors' pressed and releases.");
 			NextColor();
+			buttonColPressed = false;
 			/*
 			// Visual feedback button was pressed
 			for (int p = 0; p < 3; p++)
@@ -670,9 +691,6 @@ void loop()
 			*/
 		}
 	}
-	buttonFxPressed = btnFxPressed;
-	buttonColPressed = btnColPressed;
-	bothButtonsPressed = btnFxPressed & btnColPressed;
 
 	if (!ledsStarted)
 	{
