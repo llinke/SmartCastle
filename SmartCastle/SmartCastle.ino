@@ -68,10 +68,10 @@ static bool bothButtonsPressed = false;
 
 bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 {
-	Serial.println("WIFI ------------------------------------------------------");
+	DEBUG_PRINTLN("WIFI ------------------------------------------------------");
 	if (!forceReconnect && WiFi.status() == WL_CONNECTED)
 	{
-		Serial.println("WiFi: already connected...");
+		DEBUG_PRINTLN("WiFi: already connected...");
 		return true; // Is already connected...
 	}
 
@@ -92,12 +92,12 @@ bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 	//fetches ssid and pass from eeprom and tries to connect
 	//if it does not connect it starts an access point with the specified name
 	//here  "AutoConnectAP" and goes into a blocking loop awaiting configuration
-	Serial.println("WiFi Manager trying to connect...");
+	DEBUG_PRINTLN("WiFi Manager trying to connect...");
 	if (useWifiCfgTimeout)
 	{
-		Serial.print("You have ");
-		Serial.print(ConfigureAPTimeout);
-		Serial.println(" seconds for configuration if required.");
+		DEBUG_PRINT("You have ");
+		DEBUG_PRINT(ConfigureAPTimeout);
+		DEBUG_PRINTLN(" seconds for configuration if required.");
 		wifiManager.setConfigPortalTimeout(ConfigureAPTimeout);
 	}
 	bool connected = wifiManager.autoConnect(wifiApName.c_str());
@@ -110,9 +110,13 @@ bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 		FastLED.show();
 	}
 	if (connected)
-		Serial.println("Wifi is connected...yay!!!");
+	{
+		DEBUG_PRINTLN("Wifi is connected...yay!!!");
+	}
 	else
-		Serial.println("!!! WIFI NOT CONNECTED !!!");
+	{
+		DEBUG_PRINTLN("!!! WIFI NOT CONNECTED !!!");
+	}
 	delay(5000);
 
 	return connected;
@@ -124,8 +128,8 @@ void InitBlynk()
 	if (WiFi.status() != WL_CONNECTED)
 		return;
 
-	Serial.println("BLYNK -----------------------------------------------------");
-	Serial.println("Blynk: authenticating");
+	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
+	DEBUG_PRINTLN("Blynk: authenticating");
 	Blynk.config(blynkAuth);
 	Blynk.connect();
 
@@ -138,7 +142,7 @@ void SendMenusToBlynk()
 	if (WiFi.status() != WL_CONNECTED)
 		return;
 
-	Serial.println("Blynk: assigning menu 'FX'");
+	DEBUG_PRINTLN("Blynk: assigning menu 'FX'");
 	BlynkParamAllocated fxItems(128);
 	fxItems.add("Zufällig");
 	fxItems.add("Lauflicht");
@@ -148,7 +152,7 @@ void SendMenusToBlynk()
 	fxItems.add("Farbwechsel");
 	Blynk.setProperty(V2, "labels", fxItems);
 
-	Serial.println("Blynk: assigning menu 'Colors'");
+	DEBUG_PRINTLN("Blynk: assigning menu 'Colors'");
 	BlynkParamAllocated colItems(128);
 	colItems.add("Zufällig");
 	for (int i = 0; i < ColorNames.size(); i++)
@@ -163,7 +167,7 @@ void SendStatusToBlynk()
 	if (WiFi.status() != WL_CONNECTED)
 		return;
 
-	Serial.println("Blynk: sending current status");
+	DEBUG_PRINTLN("Blynk: sending current status");
 	Blynk.virtualWrite(V0, ledsStarted);
 	Blynk.virtualWrite(V2, currFxNr.at(currGrpNr) + 1);
 	Blynk.virtualWrite(V4, currColNr.at(currGrpNr) + 1);
@@ -180,10 +184,10 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 		return doStart ? startStrip() : pixelCount;
 	}
 
-	Serial.println("LEDStrip --------------------------------------------------");
-	Serial.println("Allocating memory for LED strip data.");
+	DEBUG_PRINTLN("LEDStrip --------------------------------------------------");
+	DEBUG_PRINTLN("Allocating memory for LED strip data.");
 	leds = (struct CRGB *)malloc(ledCount * sizeof(struct CRGB));
-	Serial.println("Assigning LEDs to FastLED.");
+	DEBUG_PRINTLN("Assigning LEDs to FastLED.");
 	FastLED.addLeds<PIXEL_TYPE, PIXEL_PIN>(leds, ledCount);
 	//FastLED.setMaxPowerInVoltsAndMilliamps(5,3000);
 	FastLED.setBrightness(globalBrightness);
@@ -196,7 +200,7 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 
 	if (playDemo)
 	{
-		Serial.println("Playing little demo effect.");
+		DEBUG_PRINTLN("Playing little demo effect.");
 		for (int dot = 0; dot < ledCount; dot++)
 		{
 			leds[dot] = CHSV(random8(), 255, 255);
@@ -214,19 +218,19 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 
 	if (playDemo)
 	{
-		Serial.println("Fading away demo effect.");
+		DEBUG_PRINTLN("Fading away demo effect.");
 		for (int fade = 0; fade < 20; fade++)
 		{
 			fadeToBlackBy(leds, ledCount, 20);
 			FastLED.show();
 			delay(50);
 		}
-		Serial.println("Clearing LEDs.");
+		DEBUG_PRINTLN("Clearing LEDs.");
 		FastLED.clear(true);
 		FastLED.show();
 	}
 
-	Serial.println("Adding special groups.");
+	DEBUG_PRINTLN("Adding special groups.");
 	neoGroups.clear();
 	// Group 0: all LEDs
 	addGroup("All LEDs", 0, pixelCount, 0);
@@ -236,7 +240,7 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 	addGroup("All Castle LEDs", 8, pixelCount - 8, 0);
 
 	/*
-	Serial.println("Adding groups for room.");
+	DEBUG_PRINTLN("Adding groups for room.");
 	addGroup("Room 1", 8, 8, 0);
 	addGroup("Room 2", 8, 8, 0);
 	addGroup("Room 3", 8, 8, 0);
@@ -347,15 +351,15 @@ int setGrpColors(
 
 void SetEffect(int grpNr, int fxNr, bool startFx = false)
 {
-	Serial.println("SetEffect ---------------------------------------------------");
-	Serial.print("Fx: Configuring LED effect #");
-	Serial.print(fxNr);
-	Serial.print(" for group #");
-	Serial.println(grpNr);
+	DEBUG_PRINTLN("SetEffect ---------------------------------------------------");
+	DEBUG_PRINT("Fx: Configuring LED effect #");
+	DEBUG_PRINT(fxNr);
+	DEBUG_PRINT(" for group #");
+	DEBUG_PRINTLN(grpNr);
 
 	if (fxNr == 0)
 	{
-		Serial.println("Fx: Choosing random effect.");
+		DEBUG_PRINTLN("Fx: Choosing random effect.");
 		SetEffect(grpNr, random8(1, maxFxNr), startFx);
 		return;
 	}
@@ -402,9 +406,9 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 		fxMirror = mirror::MIRROR0;
 		break;
 	}
-	Serial.print("Fx: Changing effect to '");
-	Serial.print(fxPatternName);
-	Serial.println("'");
+	DEBUG_PRINT("Fx: Changing effect to '");
+	DEBUG_PRINT(fxPatternName);
+	DEBUG_PRINTLN("'");
 	setGrpEffect(
 		grpNr,
 		fxPattern,
@@ -431,23 +435,23 @@ void InitColorNames()
 
 void SetColors(int grpNr, int colNr)
 {
-	Serial.println("SetColors --------------------------------------------------");
-	Serial.print("Col: Configuring LED colors #");
-	Serial.print(colNr);
-	Serial.print(" for group #");
-	Serial.println(grpNr);
+	DEBUG_PRINTLN("SetColors --------------------------------------------------");
+	DEBUG_PRINT("Col: Configuring LED colors #");
+	DEBUG_PRINT(colNr);
+	DEBUG_PRINT(" for group #");
+	DEBUG_PRINTLN(grpNr);
 
 	if (colNr == 0)
 	{
-		Serial.println("Col: Choosing random color palette.");
+		DEBUG_PRINTLN("Col: Choosing random color palette.");
 		SetColors(grpNr, random8(1, maxColNr));
 		return;
 	}
 
 	String palKey = ColorNames[colNr - 1];
-	Serial.print("Col: Changing color palette to '");
-	Serial.print(palKey);
-	Serial.println("'");
+	DEBUG_PRINT("Col: Changing color palette to '");
+	DEBUG_PRINT(palKey);
+	DEBUG_PRINTLN("'");
 	if (ColorPalettes.find(palKey) != ColorPalettes.end())
 	{
 		std::vector<CRGB> colors = ColorPalettes.find(palKey)->second;
@@ -467,8 +471,8 @@ void NextEffect(int nextFx = -1)
 	}
 	if (currFxNr.at(currGrpNr) > maxFxNr)
 		currFxNr.at(currGrpNr) = 0;
-	Serial.print("CONTROL: Button 'FX' pressed, changing effect number to: ");
-	Serial.println(currFxNr.at(currGrpNr));
+	DEBUG_PRINT("CONTROL: Button 'FX' pressed, changing effect number to: ");
+	DEBUG_PRINTLN(currFxNr.at(currGrpNr));
 	SetEffect(currGrpNr, currFxNr.at(currGrpNr), true);
 }
 
@@ -484,8 +488,8 @@ void NextColor(int nextCol = -1)
 	}
 	if (currColNr.at(currGrpNr) > maxColNr)
 		currColNr.at(currGrpNr) = 0;
-	Serial.print("CONTROL: Button 'Colors' pressed, changing color number to: ");
-	Serial.println(currColNr.at(currGrpNr));
+	DEBUG_PRINT("CONTROL: Button 'Colors' pressed, changing color number to: ");
+	DEBUG_PRINTLN(currColNr.at(currGrpNr));
 	SetColors(currGrpNr, currColNr.at(currGrpNr));
 }
 
@@ -493,9 +497,9 @@ void NextColor(int nextCol = -1)
 BLYNK_WRITE(V0) // Button "Power"
 {
 	int pinValue = param.asInt();
-	Serial.println("BLYNK -----------------------------------------------------");
-	Serial.print("Blynk-Button 'POWER' pressed: ");
-	Serial.println(pinValue);
+	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
+	DEBUG_PRINT("Blynk-Button 'POWER' pressed: ");
+	DEBUG_PRINTLN(pinValue);
 	if (pinValue == 1)
 	{
 		if (!ledsStarted)
@@ -517,9 +521,9 @@ BLYNK_WRITE(V0) // Button "Power"
 BLYNK_WRITE(V1) // Button "FX"
 {
 	int pinValue = param.asInt();
-	Serial.println("BLYNK -----------------------------------------------------");
-	Serial.print("Blynk-Button 'FX' pressed: ");
-	Serial.println(pinValue);
+	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
+	DEBUG_PRINT("Blynk-Button 'FX' pressed: ");
+	DEBUG_PRINTLN(pinValue);
 	if (pinValue == 1)
 	{
 		NextEffect();
@@ -530,18 +534,18 @@ BLYNK_WRITE(V1) // Button "FX"
 BLYNK_WRITE(V2) // DropDown "FX"
 {
 	int pinValue = param.asInt() - 1;
-	Serial.println("BLYNK -----------------------------------------------------");
-	Serial.print("Blynk-DropDown 'FX' selected: ");
-	Serial.println(pinValue);
+	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
+	DEBUG_PRINT("Blynk-DropDown 'FX' selected: ");
+	DEBUG_PRINTLN(pinValue);
 	NextEffect(pinValue);
 }
 
 BLYNK_WRITE(V3) // Button "Color"
 {
 	int pinValue = param.asInt();
-	Serial.println("BLYNK -----------------------------------------------------");
-	Serial.print("Blynk-Button 'Colors' pressed: ");
-	Serial.println(pinValue);
+	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
+	DEBUG_PRINT("Blynk-Button 'Colors' pressed: ");
+	DEBUG_PRINTLN(pinValue);
 	if (pinValue == 1)
 	{
 		NextColor();
@@ -552,18 +556,18 @@ BLYNK_WRITE(V3) // Button "Color"
 BLYNK_WRITE(V4) // DropDown "Colors"
 {
 	int pinValue = param.asInt() - 1;
-	Serial.println("BLYNK -----------------------------------------------------");
-	Serial.print("Blynk-DropDown 'Colors' selected: ");
-	Serial.println(pinValue);
+	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
+	DEBUG_PRINT("Blynk-DropDown 'Colors' selected: ");
+	DEBUG_PRINTLN(pinValue);
 	NextColor(pinValue);
 }
 
 BLYNK_WRITE(V5) // Slider "Glitter"
 {
 	int pinValue = param.asInt();
-	Serial.println("BLYNK -----------------------------------------------------");
-	Serial.print("Blynk-Slider 'Glitter' selected: ");
-	Serial.println(pinValue);
+	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
+	DEBUG_PRINT("Blynk-Slider 'Glitter' selected: ");
+	DEBUG_PRINTLN(pinValue);
 	currGlitter.at(currGrpNr) = pinValue;
 	NeoGroup *neoGroup = &(neoGroups.at(currGrpNr));
 	neoGroup->ChangeGlitter(currGlitter.at(currGrpNr));
@@ -572,9 +576,9 @@ BLYNK_WRITE(V5) // Slider "Glitter"
 BLYNK_WRITE(V6) // Slider "Brightness"
 {
 	int pinValue = param.asInt();
-	Serial.println("BLYNK -----------------------------------------------------");
-	Serial.print("Blynk-Slider 'Brightness' selected: ");
-	Serial.println(pinValue);
+	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
+	DEBUG_PRINT("Blynk-Slider 'Brightness' selected: ");
+	DEBUG_PRINTLN(pinValue);
 	globalBrightness = pinValue;
 	FastLED.setBrightness(pinValue);
 	FastLED.setDither(0);
@@ -583,9 +587,9 @@ BLYNK_WRITE(V6) // Slider "Brightness"
 BLYNK_WRITE(V7) // Slider "Speed"
 {
 	int pinValue = param.asInt();
-	Serial.println("BLYNK -----------------------------------------------------");
-	Serial.print("Blynk-Slider 'Speed' selected: ");
-	Serial.println(pinValue);
+	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
+	DEBUG_PRINT("Blynk-Slider 'Speed' selected: ");
+	DEBUG_PRINTLN(pinValue);
 	currFps.at(currGrpNr) = pinValue;
 	NeoGroup *neoGroup = &(neoGroups.at(currGrpNr));
 	neoGroup->ChangeFps(currFps.at(currGrpNr));
@@ -629,14 +633,14 @@ void setup()
 		InitBlynk();
 	*/
 
-	Serial.println("BOOT/SETUP ------------------------------------------------");
-	Serial.println("Setup: Setting up SmartCastle for Arduino");
-	Serial.println("Setup: Initializing LED strip");
+	DEBUG_PRINTLN("BOOT/SETUP ------------------------------------------------");
+	DEBUG_PRINTLN("Setup: Setting up SmartCastle for Arduino");
+	DEBUG_PRINTLN("Setup: Initializing LED strip");
 	initStrip(pixelCount, true, true);
-	Serial.print("Setup: Amount of LEDs: ");
-	Serial.println(pixelCount);
+	DEBUG_PRINT("Setup: Amount of LEDs: ");
+	DEBUG_PRINTLN(pixelCount);
 
-	Serial.println("Setup: Starting LED strip");
+	DEBUG_PRINTLN("Setup: Starting LED strip");
 	startStrip();
 
 	SetEffect(currGrpNr, defaultFxNr);
@@ -647,14 +651,14 @@ void setup()
 // Main loop
 void loop()
 {
-	//Serial.println("LOOP ------------------------------------------------------");
+	//DEBUG_PRINTLN("LOOP ------------------------------------------------------");
 	bool btnFxReleased = buttonFxPressed && !digitalRead(BUTTON_PIN_FX);
 	bool btnColReleased = buttonColPressed && !digitalRead(BUTTON_PIN_COL);
 	if (bothButtonsPressed &&
 		(btnFxReleased | btnColReleased) /*&&
 		WiFi.status() != WL_CONNECTED*/) // Both buttons pressed
 	{
-		Serial.println("Loop: both buttons pressed, entering WiFi-setup.");
+		DEBUG_PRINTLN("Loop: both buttons pressed, entering WiFi-setup.");
 		InitWifi(false, true);
 		buttonColPressed = false;
 		buttonFxPressed = false;
@@ -668,13 +672,13 @@ void loop()
 	{
 		if (buttonFxPressed && btnFxReleased) // Button was released
 		{
-			Serial.println("Loop: button 'FX' pressed and released.");
+			DEBUG_PRINTLN("Loop: button 'FX' pressed and released.");
 			NextEffect();
 			buttonFxPressed = false;
 		}
 		if (buttonColPressed && btnColReleased) // Button was released
 		{
-			Serial.println("Loop: button 'colors' pressed and releases.");
+			DEBUG_PRINTLN("Loop: button 'colors' pressed and releases.");
 			NextColor();
 			buttonColPressed = false;
 			/*
@@ -694,7 +698,7 @@ void loop()
 
 	if (!ledsStarted)
 	{
-		//Serial.println("Loop: LEDs not started, leaving loop.");
+		//DEBUG_PRINTLN("Loop: LEDs not started, leaving loop.");
 		return;
 	}
 
@@ -705,8 +709,8 @@ void loop()
 		NeoGroup *neoGroup = &(neoGroups.at(i));
 		if (neoGroup->LedCount <= pixelCount)
 		{
-			//Serial.print("Loop: Updating group ");
-			//Serial.println(i);
+			//DEBUG_PRINT("Loop: Updating group ");
+			//DEBUG_PRINTLN(i);
 			ledsUpdated |= neoGroup->Update();
 		}
 
@@ -717,7 +721,7 @@ void loop()
 	}
 	if (ledsUpdated)
 	{
-		//Serial.println("Loop: Refreshing LEDs.");
+		//DEBUG_PRINTLN("Loop: Refreshing LEDs.");
 		FastLED.show();
 	}
 	/*
@@ -727,7 +731,7 @@ void loop()
 		if ((millis() - lastBlynkUpdate) > 50)
 		{
 			lastBlynkUpdate = millis();
-			//Serial.println("Loop: Blynk.Run()");
+			//DEBUG_PRINTLN("Loop: Blynk.Run()");
 			if (WiFi.status() == WL_CONNECTED)
 			{
 				Blynk.run();
