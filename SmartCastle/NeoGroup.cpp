@@ -9,7 +9,7 @@
 
 #define FADEOUT_DURATION 500
 #define FADEOUT_STEPS 16
-#define CROSSFADE_PALETTES
+#define CROSSFADE_PALETTES false
 #define CROSSFADE_MAX_CHANGE_PER_STEP 16
 
 enum pattern
@@ -54,11 +54,10 @@ class NeoGroup
 	mirror fxMirror = MIRROR0;
 
 	//std::vector<CRGB> currentColors = {};
+	bool crossFadeColors = false;
 	std::vector<CRGB> currentColors = {0x000000, 0x000000};
 	CRGBPalette16 colorPalette = CRGBPalette16();
-#ifdef CROSSFADE_PALETTES
 	CRGBPalette16 colorPaletteNew = CRGBPalette16();
-#endif
 	uint8_t firePaletteNr = 6;
 
 	void (NeoGroup::*effectFunc)();
@@ -168,7 +167,8 @@ class NeoGroup
 	uint16_t ConfigureColors(
 		std::vector<CRGB> colors,
 		bool clearFirst = true,
-		bool generatePalette = true)
+		bool generatePalette = true,
+		bool crossFade = false)
 	{
 		Serial.print("CfgColor: Configuring colors for group '");
 		Serial.print(GroupID);
@@ -194,20 +194,31 @@ class NeoGroup
 				Serial.print("CfgColor: Generating color palette from ");
 				Serial.print(currentColors.size());
 				Serial.println(" CRGB colors.");
-#ifdef CROSSFADE_PALETTES
-				colorPaletteNew = GenerateRGBPalette(currentColors);
-#else
-				colorPalette = GenerateRGBPalette(currentColors);
-#endif
+
+				crossFadeColors = crossFade;
+				Serial.print("CfgColor: Crossfade to new palette: ");
+				Serial.println(crossFadeColors);
+
+				if (crossFadeColors)
+				{
+					colorPaletteNew = GenerateRGBPalette(currentColors);
+				}
+				else
+				{
+					colorPalette = GenerateRGBPalette(currentColors);
+				}
 			}
 			else
 			{
 				Serial.println("CfgColor: No colors, using empty list.");
-#ifdef CROSSFADE_PALETTES
-				colorPaletteNew = GenerateRGBPalette({});
-#else
-				colorPalette = GenerateRGBPalette({});
-#endif
+				if (crossFadeColors)
+				{
+					colorPaletteNew = GenerateRGBPalette({});
+				}
+				else
+				{
+					colorPalette = GenerateRGBPalette({});
+				}
 			}
 		}
 		return currentColors.size();
@@ -274,9 +285,10 @@ class NeoGroup
 				if (fxFadeOut == 0)
 				{
 					fill_solid(LedFirst, LedCount, 0x000000);
-#ifdef CROSSFADE_PALETTES
-					colorPalette = GenerateRGBPalette({0x000000, 0x000000});
-#endif
+					if (crossFadeColors)
+					{
+						colorPalette = GenerateRGBPalette({0x000000, 0x000000});
+					}
 				}
 				return true; // LEDs updated
 			}
@@ -302,10 +314,11 @@ class NeoGroup
 			Serial.println("'.");
 			*/
 			lastUpdate = millis();
-#ifdef CROSSFADE_PALETTES
-			// Cross-fade to new palette
-			nblendPaletteTowardPalette(colorPalette, colorPaletteNew, CROSSFADE_MAX_CHANGE_PER_STEP);
-#endif
+			if (crossFadeColors)
+			{
+				// Cross-fade to new palette
+				nblendPaletteTowardPalette(colorPalette, colorPaletteNew, CROSSFADE_MAX_CHANGE_PER_STEP);
+			}
 			if (effectFunc != NULL)
 			{
 				(this->*effectFunc)();

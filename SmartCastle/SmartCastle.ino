@@ -10,7 +10,7 @@
 #include <Arduino.h>
 //#include <ArduinoSTL.h>
 #include <vector>
-//#include <map>
+#include <map>
 #include "NeoGroup.cpp"
 
 #include <ESP8266WiFi.h>	  //ESP8266 Core WiFi Library (you most likely already have this in your sketch)
@@ -45,12 +45,14 @@ bool ledsInitialized = false;
 bool ledsStarted = false;
 const int maxFxNr = 5;
 // 1: Wave, 2: Dynamic Wave, 3: Noise, 4: confetti, 5: Fade,
-const int defaultFxNr = 2;
+const int defaultFxNr = 1;
 std::vector<int> currFxNr;
 int maxColNr = 5;
 const int defaultColNr = 1;
 std::vector<int> currColNr;
+const int defaultFps = 50; //25;
 std::vector<int> currFps;
+const int defaultGlitter = 0; //32;
 std::vector<int> currGlitter;
 int currGrpNr = 2;
 
@@ -200,6 +202,7 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 		delay(500);
 	}
 
+	InitWifi();
 	/*
 	if (InitWifi())
 		InitBlynk();
@@ -228,6 +231,7 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 	// Group 2: all LEDs
 	addGroup("All Castle LEDs", 8, pixelCount - 8, 0);
 
+	/*
 	Serial.println("Adding groups for room.");
 	addGroup("Room 1", 8, 8, 0);
 	addGroup("Room 2", 8, 8, 0);
@@ -237,6 +241,7 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 	addGroup("Room 6", 8, 8, 0);
 	addGroup("Room 7", 8, 8, 0);
 	addGroup("Room 8", 8, 8, 0);
+	*/
 
 	return doStart ? startStrip() : pixelCount;
 }
@@ -281,8 +286,8 @@ int addGroup(String grpId, int ledFirst, int ledCount, int ledOffset)
 	neoGroups.push_back(newGroup);
 	currFxNr.push_back(defaultFxNr);
 	currColNr.push_back(defaultColNr);
-	currFps.push_back(25);
-	currGlitter.push_back(0); //(32);
+	currFps.push_back(defaultFps);
+	currGlitter.push_back(defaultGlitter);
 	return neoGroups.size();
 }
 
@@ -300,7 +305,7 @@ int stopGroup(int grpNr, bool stopNow = false)
 	return 0;
 }
 
-int setEffect(
+int setGrpEffect(
 	int grpNr,
 	pattern pattern,
 	uint16_t length = 0,
@@ -322,15 +327,16 @@ int setEffect(
 	return result;
 }
 
-int setColors(
+int setGrpColors(
 	int grpNr,
 	std::vector<CRGB> colors,
 	bool clearFirst = true,
-	bool generatePalette = true)
+	bool generatePalette = true,
+	bool crossFade = false)
 {
 	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
 	//neoGroup->Stop();
-	uint16_t result = neoGroup->ConfigureColors(colors, clearFirst, generatePalette);
+	uint16_t result = neoGroup->ConfigureColors(colors, clearFirst, generatePalette, crossFade);
 	//neoGroup->Start();
 	return result;
 }
@@ -338,7 +344,10 @@ int setColors(
 void SetEffect(int grpNr, int fxNr, bool startFx = false)
 {
 	Serial.println("SetEffect ---------------------------------------------------");
-	Serial.println("Fx: Configuring LED effect");
+	Serial.print("Fx: Configuring LED effect #");
+	Serial.print(fxNr);
+	Serial.print(" for group #");
+	Serial.println(grpNr);
 
 	if (fxNr == 0)
 	{
@@ -371,6 +380,7 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 		fxPatternName = "Noise";
 		fxPattern = pattern::NOISE;
 		fxMirror = mirror::MIRROR1; // mirror::MIRROR0;
+		fxFps *= 2;					// double FPS looks better
 		break;
 	case 4: // confetti
 		fxPatternName = "Confetti";
@@ -380,6 +390,7 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 	case 5: // Fade
 		fxPatternName = "Fade";
 		fxPattern = pattern::FADE;
+		fxFps /= 2; // half FPS looks better
 		break;
 	default:
 		fxPatternName = "Static";
@@ -390,7 +401,7 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 	Serial.print("Fx: Changing effect to '");
 	Serial.print(fxPatternName);
 	Serial.println("'");
-	setEffect(
+	setGrpEffect(
 		grpNr,
 		fxPattern,
 		fxLength,
@@ -402,10 +413,25 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 		startGroup(grpNr);
 }
 
+void InitColorNames()
+{
+	InitColorPalettes();
+	/*
+	for (std::map<String, std::vector<CRGB>>::const_iterator it = ColorPalettes.begin(); it != ColorPalettes.end(); ++it)
+	{
+		String key = it->first;
+		ColorNames.push_back(key);
+	}
+	*/
+}
+
 void SetColors(int grpNr, int colNr)
 {
 	Serial.println("SetColors --------------------------------------------------");
-	Serial.println("Col: Configuring LED colors");
+	Serial.print("Col: Configuring LED colors #");
+	Serial.print(colNr);
+	Serial.print(" for group #");
+	Serial.println(grpNr);
 
 	if (colNr == 0)
 	{
@@ -421,7 +447,7 @@ void SetColors(int grpNr, int colNr)
 	if (ColorPalettes.find(palKey) != ColorPalettes.end())
 	{
 		std::vector<CRGB> colors = ColorPalettes.find(palKey)->second;
-		setColors(grpNr, colors, true, true);
+		setGrpColors(grpNr, colors, true, true, CROSSFADE_PALETTES);
 	}
 }
 
@@ -572,12 +598,13 @@ void setup()
 {
 	Serial.begin(115200);
 
+	InitColorNames();
 	maxColNr = ColorNames.size();
 
 	pinMode(BUTTON_PIN_FX, INPUT_PULLUP);
 	pinMode(BUTTON_PIN_COL, INPUT_PULLUP);
 
-	InitWifi();
+	//InitWifi();
 	/*
 	if (InitWifi())
 		InitBlynk();
@@ -593,9 +620,9 @@ void setup()
 	Serial.println("Setup: Starting LED strip");
 	startStrip();
 
-	//SetEffect(currGrpNr, startUpFxNr);
-	//SetColors(currGrpNr, startUpColNr);
-	//startGroup(currGrpNr);
+	SetEffect(currGrpNr, defaultFxNr);
+	SetColors(currGrpNr, defaultColNr);
+	startGroup(currGrpNr);
 }
 
 // Main loop
@@ -629,6 +656,7 @@ void loop()
 		{
 			Serial.println("Loop: button 'colors' pressed and releases.");
 			NextColor();
+			/*
 			// Visual feedback button was pressed
 			for (int p = 0; p < 3; p++)
 			{
@@ -639,6 +667,7 @@ void loop()
 				FastLED.show();
 				FastLED.delay(100);
 			}
+			*/
 		}
 	}
 	buttonFxPressed = btnFxPressed;
