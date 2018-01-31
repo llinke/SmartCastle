@@ -9,7 +9,8 @@
 // *** Compiler Flags
 // **************************************************
 //#define INCLUDE_WIFI
-#define SINGLE_ROOM
+//#define SINGLE_ROOM
+#define START_WITH_RANDOM_COLOR_PALETTE
 
 // **************************************************
 // *** Includes
@@ -760,7 +761,15 @@ void setup()
 		DEBUG_PRINT("FastLED: Setting up and starting group #");
 		DEBUG_PRINTLN(i);
 		SetEffect(i, defaultFxNr, false);
+#ifdef START_WITH_RANDOM_COLOR_PALETTE
+		// Random default color palette
+		int rndCol = random8(0, ColorNames.size() - 1);
+		currColNr[i] = rndCol;
+		SetColors(i, rndCol);
+#else
+		// Static default color palette
 		SetColors(i, defaultColNr);
+#endif
 		startGroup(i);
 	}
 	currGrpNr = groupOffset + 1;
@@ -871,6 +880,38 @@ void loop()
 	}
 	*/
 #endif
+
+	// Cycle palette of group at corresponding status LED
+	static unsigned long lastUpdate = 0;
+	static unsigned long updateInterval = (1000 / 50); // 50 fps
+	static uint8_t statusIdx = 0;
+	static uint8_t currentBrightnessIdx = 0;
+	if ((millis() - lastUpdate) > updateInterval)
+	{
+		/*
+		DEBUG_PRINT("Updating status LEDS (idx:");
+		DEBUG_PRINT(statusIdx);
+		DEBUG_PRINT(")...");
+		*/
+		NeoGroup *neoGroupStatus = &(neoGroups.at(1));
+		for (int i = groupOffset; i < neoGroups.size(); i++)
+		{
+			NeoGroup *neoGroup = &(neoGroups.at(i));
+			uint8_t currentBrightness =
+				i == currGrpNr
+					? quadwave8(currentBrightnessIdx)
+					: 128;
+			CRGB statusColor = neoGroup->GetColorFromPaletteAt(statusIdx, currentBrightness);
+			//neoGroupStatus[i - groupOffset] = statusColor;
+			neoGroupStatus->SetPixel(i - groupOffset, statusColor);
+			//DEBUG_PRINT(".");
+		}
+		//DEBUG_PRINTLN("DONE");
+		statusIdx++;
+		currentBrightnessIdx += 3;
+		lastUpdate = millis();
+	}
+
 	//pixelCount = count; //PIXEL_COUNT;
 	groupCount = neoGroups.size() - groupOffset; // Don't count main groups (all LEDs)
 }

@@ -80,6 +80,11 @@ class NeoGroup
 		colorPalette = GenerateRGBPalette({0x000000, 0x000000});
 	}
 
+	CRGB GetColorFromPaletteAt(uint8_t idx, uint8_t brightness = 255)
+	{
+		return ColorFromPalette(colorPalette, idx, brightness);
+	}
+
 	uint16_t ConfigureEffect(
 		pattern pattern,
 		uint16_t length = 0,
