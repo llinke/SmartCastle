@@ -5,6 +5,15 @@
 * Date:
 */
 
+// **************************************************
+// *** Compiler Flags
+// **************************************************
+//#define INCLUDE_WIFI
+#define SINGLE_ROOM
+
+// **************************************************
+// *** Includes
+// **************************************************
 #include "SerialDebug.h"
 #include "I2CInclude.h"
 #include "FastLedInclude.h"
@@ -15,13 +24,16 @@
 #include <map>
 #include "NeoGroup.cpp"
 
+#ifdef INCLUDE_WIFI
 #include <ESP8266WiFi.h>	  //ESP8266 Core WiFi Library (you most likely already have this in your sketch)
 #include <DNSServer.h>		  //Local DNS Server used for redirecting all requests to the configuration portal
 #include <ESP8266WebServer.h> //Local WebServer used to serve the configuration portal
 #include <WiFiManager.h>	  //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
+#endif
 
-#define SINGLE_ROOM
-
+// **************************************************
+// *** Blynk settings
+// **************************************************
 /*
 #define BLYNK_PRINT Serial
 #define BLYNK_MAX_SENDBYTES 512 // Default is 128
@@ -36,9 +48,10 @@ const char blynkAuth[] = "4abfe0577ae745aca3d5d5d9f37911b7";
 // **************************************************
 // *** Variable and Constamts  Declarations
 // **************************************************
+#ifdef INCLUDE_WIFI
 const String wifiApName = "AP_SmartCastle";
 const int ConfigureAPTimeout = 10;
-//int ByteReceived;
+#endif
 
 volatile bool buttonPressedOnI2C = false;
 
@@ -73,6 +86,7 @@ static bool buttonFxPressed = false;
 static bool buttonColPressed = false;
 static bool bothButtonsPressed = false;
 
+#ifdef INCLUDE_WIFI
 bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 {
 	DEBUG_PRINTLN("WIFI ------------------------------------------------------");
@@ -128,6 +142,7 @@ bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 
 	return connected;
 }
+#endif
 
 /*
 void InitBlynk()
@@ -217,11 +232,13 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 		delay(500);
 	}
 
+#ifdef INCLUDE_WIFI
 	InitWifi();
 	/*
 	if (InitWifi())
 		InitBlynk();
 	*/
+#endif
 
 	if (playDemo)
 	{
@@ -712,11 +729,13 @@ void setup()
 	expander.attachInterrupt(2, onButtonRoom3, FALLING);
 	expander.attachInterrupt(3, onButtonRoom4, FALLING);
 
+#ifdef INCLUDE_WIFI
 	//InitWifi();
 	/*
 	if (InitWifi())
 		InitBlynk();
 	*/
+#endif
 
 	DEBUG_PRINTLN("FastLED: Initializing color palettes");
 	InitColorNames();
@@ -766,14 +785,18 @@ void loop()
 		WiFi.status() != WL_CONNECTED*/) // Both buttons pressed
 	{
 		DEBUG_PRINTLN("Loop: both buttons pressed, entering WiFi-setup.");
+#ifdef INCLUDE_WIFI
 		InitWifi(false, true);
+#endif
 		buttonColPressed = false;
 		buttonFxPressed = false;
 		bothButtonsPressed = false;
+#ifdef INCLUDE_WIFI
 		/*
 		if (InitWifi(false, true))
 			InitBlynk();
 		*/
+#endif
 	}
 	else
 	{
@@ -831,7 +854,8 @@ void loop()
 		//DEBUG_PRINTLN("Loop: Refreshing LEDs.");
 		FastLED.show();
 	}
-	/*
+#ifdef INCLUDE_WIFI
+/*
 	else
 	{
 		static int lastBlynkUpdate = 0;
@@ -846,6 +870,7 @@ void loop()
 		}
 	}
 	*/
+#endif
 	//pixelCount = count; //PIXEL_COUNT;
 	groupCount = neoGroups.size() - groupOffset; // Don't count main groups (all LEDs)
 }
