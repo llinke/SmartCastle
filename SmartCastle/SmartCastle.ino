@@ -20,6 +20,8 @@
 #include <ESP8266WebServer.h> //Local WebServer used to serve the configuration portal
 #include <WiFiManager.h>	  //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
 
+#define SINGLE_ROOM
+
 /*
 #define BLYNK_PRINT Serial
 #define BLYNK_MAX_SENDBYTES 512 // Default is 128
@@ -244,6 +246,10 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 	// Group 2: all LEDs
 	addGroup("All Castle LEDs", 8, pixelCount - 8, 0);
 
+#ifdef SINGLE_ROOM
+	DEBUG_PRINTLN("Adding groups for room.");
+	addGroup("Room 1", 8 + 0, 64, 0);
+#else
 	DEBUG_PRINTLN("Adding groups for room.");
 	addGroup("Room 1", 8 + 0, 32, 0);
 	addGroup("Room 2", 8 + 32, 32, 0);
@@ -260,6 +266,7 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 	addGroup("Room 7", 8, 8, 0);
 	addGroup("Room 8", 8, 8, 0);
 	*/
+#endif
 
 	return doStart ? startStrip() : pixelCount;
 }
@@ -723,7 +730,7 @@ void setup()
 	DEBUG_PRINTLN("FastLED: Starting LED strip");
 	startStrip();
 
-/*
+	/*
 	DEBUG_PRINTLN("FastLED: Setting up and starting single group");
 	SetEffect(currGrpNr, defaultFxNr);
 	SetColors(currGrpNr, defaultColNr);
