@@ -399,6 +399,12 @@ class NeoGroup
 		}
 	}
 
+	void FillPixels(int pos, int count, CRGB newcolor, mirror mirror = MIRROR0, bool blend = false)
+	{
+		for (int p = pos; p < count; p++)
+			SetPixel(p, newcolor, mirror, blend);
+	}
+
 	void SetPixel(int pos, CRGB newcolor, mirror mirror = MIRROR0, bool blend = false)
 	{
 		if (mirror == MIRROR1) // set even/odd as mirror values

@@ -60,12 +60,14 @@ const int ConfigureAPTimeout = 10;
 
 int globalBrightness = 96;
 
-volatile bool buttonPressedOnI2C = false;
+static volatile bool buttonPressedOnI2C = false;
+static volatile bool roomWasChanged = false;
 
 // Test 1: equally sized rooms
 //const std::vector<int> groupRoomSizes = {16, 16, 16, 16, 16, 16, 16, 16};
 // Test 2: differently sized rooms
-const std::vector<int> groupRoomSizes = {4, 8, 12, 16, 16, 20, 24, 28};
+//const std::vector<int> groupRoomSizes = {4, 8, 12, 16, 16, 20, 24, 28};
+const std::vector<int> groupRoomSizes = {8, 24, 10, 22, 12, 20, 14, 18};
 int groupRoomTotalSize = 0;
 int groupRoomCount = 0;
 #ifdef ADD_GROUP_FOR_ALL_ROOMS
@@ -96,10 +98,10 @@ std::vector<int> currGlitter;
 //std::vector<NeoGroup *> neoGroups;
 std::vector<NeoGroup> neoGroups;
 
-static bool buttonStartStopPressed = false;
-static bool buttonFxPressed = false;
-static bool buttonColPressed = false;
-static bool bothButtonsPressed = false;
+static volatile bool buttonStartStopPressed = false;
+static volatile bool buttonFxPressed = false;
+static volatile bool buttonColPressed = false;
+static volatile bool bothButtonsPressed = false;
 
 #ifdef INCLUDE_WIFI
 bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
@@ -726,6 +728,7 @@ void changeToRoom(int roomNo = -1)
 	}
 	DEBUG_PRINT(currGrpNr);
 	DEBUG_PRINTLN(".");
+	roomWasChanged = true;
 }
 void onButtonRoom1() { changeToRoom(0); }
 void onButtonRoom2() { changeToRoom(1); }
@@ -878,18 +881,6 @@ void loop()
 			DEBUG_PRINTLN("Loop: button 'colors' pressed and releases.");
 			NextColor();
 			buttonColPressed = false;
-			/*
-			// Visual feedback button was pressed
-			for (int p = 0; p < 3; p++)
-			{
-				FastLED.setBrightness(0);
-				FastLED.show();
-				FastLED.delay(100);
-				FastLED.setBrightness(globalBrightness);
-				FastLED.show();
-				FastLED.delay(100);
-			}
-			*/
 		}
 		if (buttonStartStopPressed && btnStartStopReleased)
 		{
@@ -903,6 +894,22 @@ void loop()
 	{
 		//DEBUG_PRINTLN("Loop: LEDs not started, leaving loop.");
 		return;
+	}
+
+	if (roomWasChanged)
+	{
+		// Visual feedback which room was changed
+		NeoGroup *neoGroup = &(neoGroups.at(currGrpNr));
+		for (int p = 0; p < 2; p++)
+		{
+			neoGroup->FillPixels(0, neoGroup->LedCount, CRGB::White);
+			FastLED.show();
+			delay(100);
+			neoGroup->FillPixels(0, neoGroup->LedCount, CRGB::Black);
+			FastLED.show();
+			delay(100);
+		}
+		roomWasChanged = false;
 	}
 
 	bool isActiveMainGrp = false;
