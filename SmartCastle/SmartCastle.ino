@@ -9,8 +9,11 @@
 // *** Compiler Flags
 // **************************************************
 //#define INCLUDE_WIFI
+#define ADD_GROUP_FOR_ALL_ROOMS
 //#define SINGLE_ROOM
 #define START_WITH_RANDOM_COLOR_PALETTE
+//#define DEBUG_LOOP
+//#define DO_NOT_START_FX_ON_INIT
 
 // **************************************************
 // *** Includes
@@ -23,6 +26,7 @@
 //#include <ArduinoSTL.h>
 #include <vector>
 #include <map>
+#include <string.h>
 #include "NeoGroup.cpp"
 
 #ifdef INCLUDE_WIFI
@@ -54,13 +58,27 @@ const String wifiApName = "AP_SmartCastle";
 const int ConfigureAPTimeout = 10;
 #endif
 
+int globalBrightness = 96;
+
 volatile bool buttonPressedOnI2C = false;
+
+// Test 1: equally sized rooms
+//const std::vector<int> groupRoomSizes = {16, 16, 16, 16, 16, 16, 16, 16};
+// Test 2: differently sized rooms
+const std::vector<int> groupRoomSizes = {4, 8, 12, 16, 16, 20, 24, 28};
+int groupRoomTotalSize = 0;
+int groupRoomCount = 0;
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
+int groupRoomOffset = 3;
+#else
+int groupRoomOffset = 2;
+#endif
+int currGrpNr = groupRoomOffset;
 
 // Static size
 //struct CRGB leds[PIXEL_COUNT];
 // Dynamic size:
 struct CRGB *leds = NULL;
-int pixelCount = PIXEL_COUNT;
 bool ledsInitialized = false;
 bool ledsStarted = false;
 const int maxFxNr = 5;
@@ -77,12 +95,8 @@ std::vector<int> currGlitter;
 
 //std::vector<NeoGroup *> neoGroups;
 std::vector<NeoGroup> neoGroups;
-int groupOffset = 2;
-int currGrpNr = groupOffset;
-int groupCount = 0;
 
-int globalBrightness = 64;
-
+static bool buttonStartStopPressed = false;
 static bool buttonFxPressed = false;
 static bool buttonColPressed = false;
 static bool bothButtonsPressed = false;
@@ -100,7 +114,7 @@ bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 	if (ledsInitialized)
 	{
 		FastLED.clear(true);
-		fill_solid(leds, pixelCount, CRGB::Blue);
+		fill_solid(leds, PIXEL_COUNT, CRGB::Blue);
 		FastLED.show();
 	}
 	delay(2500);
@@ -128,7 +142,7 @@ bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 	//if you get here you have connected to the WiFi
 	if (ledsInitialized)
 	{
-		fill_solid(leds, pixelCount, connected ? CRGB::Green : CRGB::Red);
+		fill_solid(leds, PIXEL_COUNT, connected ? CRGB::Green : CRGB::Red);
 		FastLED.show();
 	}
 	if (connected)
@@ -200,31 +214,30 @@ void SendStatusToBlynk()
 }
 */
 
-int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
+int initStrip(bool doStart = false, bool playDemo = true)
 {
 	if (ledsInitialized)
 	{
-		return doStart ? startStrip() : pixelCount;
+		return doStart ? startStrip() : PIXEL_COUNT;
 	}
 
 	DEBUG_PRINTLN("LEDStrip --------------------------------------------------");
 	DEBUG_PRINTLN("Allocating memory for LED strip data.");
-	leds = (struct CRGB *)malloc(ledCount * sizeof(struct CRGB));
+	leds = (struct CRGB *)malloc(PIXEL_COUNT * sizeof(struct CRGB));
 	DEBUG_PRINTLN("Assigning LEDs to FastLED.");
-	FastLED.addLeds<PIXEL_TYPE, PIXEL_PIN>(leds, ledCount);
+	FastLED.addLeds<PIXEL_TYPE, PIXEL_PIN>(leds, PIXEL_COUNT);
 	//FastLED.setMaxPowerInVoltsAndMilliamps(5,3000);
 	FastLED.setBrightness(globalBrightness);
 	FastLED.setDither(0);
 	FastLED.clear(true);
 	FastLED.show();
 
-	pixelCount = ledCount;
 	ledsInitialized = true;
 
 	if (playDemo)
 	{
 		DEBUG_PRINTLN("Playing little demo effect.");
-		for (int dot = 0; dot < ledCount; dot++)
+		for (int dot = 0; dot < PIXEL_COUNT; dot++)
 		{
 			leds[dot] = CHSV(random8(), 255, 255);
 			FastLED.show();
@@ -246,7 +259,7 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 		DEBUG_PRINTLN("Fading away demo effect.");
 		for (int fade = 0; fade < 20; fade++)
 		{
-			fadeToBlackBy(leds, ledCount, 20);
+			fadeToBlackBy(leds, PIXEL_COUNT, 20);
 			FastLED.show();
 			delay(50);
 		}
@@ -255,38 +268,44 @@ int initStrip(int ledCount, bool doStart = false, bool playDemo = true)
 		FastLED.show();
 	}
 
+	DEBUG_PRINTLN("Calculating groups.");
+	groupRoomCount = groupRoomSizes.size();
+	groupRoomTotalSize = 0;
+	for (int i = 0; i < groupRoomSizes.size(); i++)
+		groupRoomTotalSize += groupRoomSizes[i];
+
 	DEBUG_PRINTLN("Adding special groups.");
 	neoGroups.clear();
 	// Group 0: all LEDs
-	addGroup("All LEDs", 0, pixelCount, 0);
+	addGroup("  All LEDs group", 0, PIXEL_COUNT, 0);
 	// Group 1: Status LEDs
-	addGroup("Status LEDs", 0, 8, 0);
-	// Group 2: all LEDs
-	addGroup("All Castle LEDs", 8, pixelCount - 8, 0);
-
-#ifdef SINGLE_ROOM
-	DEBUG_PRINTLN("Adding groups for room.");
-	addGroup("Room 1", 8 + 0, 64, 0);
-#else
-	DEBUG_PRINTLN("Adding groups for room.");
-	addGroup("Room 1", 8 + 0, 32, 0);
-	addGroup("Room 2", 8 + 32, 32, 0);
-	addGroup("Room 3", 8 + 64, 32, 0);
-	addGroup("Room 4", 8 + 96, 32, 0);
-	/*
-	DEBUG_PRINTLN("Adding groups for room.");
-	addGroup("Room 1", 8, 8, 0);
-	addGroup("Room 2", 8, 8, 0);
-	addGroup("Room 3", 8, 8, 0);
-	addGroup("Room 4", 8, 8, 0);
-	addGroup("Room 5", 8, 8, 0);
-	addGroup("Room 6", 8, 8, 0);
-	addGroup("Room 7", 8, 8, 0);
-	addGroup("Room 8", 8, 8, 0);
-	*/
+	addGroup("  Status LED group", 0, groupRoomCount, 0);
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
+	// Group 2: all rooms' LEDs
+	addGroup("  All rooms LED group", groupRoomCount, groupRoomTotalSize, 0);
 #endif
 
-	return doStart ? startStrip() : pixelCount;
+#ifdef SINGLE_ROOM
+	DEBUG_PRINTLN("LED group for single room.");
+	addGroup("Room 1", groupRoomCount, groupRoomTotalSize, 0);
+#else
+	DEBUG_PRINTLN("Adding groups for rooms.");
+	int nextGroupStart = groupRoomCount; // Start after status LEDs
+	for (int i = 0; i < groupRoomSizes.size(); i++)
+	{
+		String roomName = "Room " + String(i + 1);
+		DEBUG_PRINT("  Adding '");
+		DEBUG_PRINT(roomName);
+		DEBUG_PRINT("' at ");
+		DEBUG_PRINT(nextGroupStart);
+		DEBUG_PRINT("  with size ");
+		DEBUG_PRINTLN(groupRoomSizes[i]);
+		addGroup(roomName, nextGroupStart, groupRoomSizes[i], 0);
+		nextGroupStart += groupRoomSizes[i];
+	}
+#endif
+
+	return doStart ? startStrip() : PIXEL_COUNT;
 }
 
 int startStrip()
@@ -295,7 +314,7 @@ int startStrip()
 		return -1;
 
 	ledsStarted = true;
-	return pixelCount;
+	return PIXEL_COUNT;
 }
 
 int stopStrip()
@@ -316,9 +335,9 @@ int stopStrip()
 
 int addGroup(String grpId, int ledFirst, int ledCount, int ledOffset)
 {
-	if ((ledFirst >= pixelCount) ||
+	if ((ledFirst >= PIXEL_COUNT) ||
 		(ledCount <= 0) ||
-		(ledFirst + ledCount) > pixelCount)
+		(ledFirst + ledCount) > PIXEL_COUNT)
 		return -((((3 * 1000) + ledFirst) * 1000) + ledCount); // Invalid parameter
 
 	// V1: new NeoGroup
@@ -333,7 +352,9 @@ int addGroup(String grpId, int ledFirst, int ledCount, int ledOffset)
 	currFps.push_back(defaultFps);
 	currGlitter.push_back(defaultGlitter);
 
-	groupCount = constrain(neoGroups.size() - groupOffset, 0, 255); // Don't count main groups (all LEDs)
+	DEBUG_PRINT("GroupCount: ");
+	DEBUG_PRINTLN(neoGroups.size());
+
 	return neoGroups.size();
 }
 
@@ -387,6 +408,23 @@ int setGrpColors(
 	return result;
 }
 
+void StartStopEffect(int grpNr)
+{
+	DEBUG_PRINTLN("StartStopEffect ---------------------------------------------");
+	DEBUG_PRINT("Fx: Configuring LED FX status for group #");
+	DEBUG_PRINT(grpNr);
+	DEBUG_PRINT(": ");
+
+	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
+	DEBUG_PRINT(neoGroup->Active);
+	DEBUG_PRINT("->");
+	DEBUG_PRINT(!(neoGroup->Active));
+	if (neoGroup->Active)
+		stopGroup(grpNr);
+	else
+		startGroup(grpNr);
+}
+
 void SetEffect(int grpNr, int fxNr, bool startFx = false)
 {
 	DEBUG_PRINTLN("SetEffect ---------------------------------------------------");
@@ -409,12 +447,13 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 	uint8_t fxFps = currFps.at(grpNr);
 	mirror fxMirror = MIRROR0;
 
+	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
 	switch (fxNr)
 	{
 	case 1: // Wave
 		fxPatternName = "Wave";
 		fxPattern = pattern::WAVE;
-		fxLength = (pixelCount * 1.5); // 48;
+		fxLength = (neoGroup->LedCount * 1.5); // 48;
 		fxMirror = mirror::MIRROR2;
 		break;
 	case 2: // Dynamic Wave
@@ -653,6 +692,10 @@ void ISRgateway()
 	//os_intr_unlock();
 }
 
+void onButtonStartStop()
+{
+	buttonStartStopPressed = true;
+}
 void onButtonFx()
 {
 	buttonFxPressed = true;
@@ -669,26 +712,29 @@ void onButtonCol()
 void changeToRoom(int roomNo = -1)
 {
 	DEBUG_PRINT("PCF8574: switching to room ");
-	DEBUG_PRINT(roomNo);
+	DEBUG_PRINT(roomNo + 1);
 	DEBUG_PRINT("->");
 	if (roomNo < 0)
 	{
 		currGrpNr++;
-		if (currGrpNr >= (groupCount + groupOffset))
-			currGrpNr = groupOffset;
+		if (currGrpNr >= (groupRoomCount + groupRoomOffset))
+			currGrpNr = groupRoomOffset;
 	}
 	else
 	{
-		currGrpNr = constrain(groupOffset + roomNo, groupOffset, groupOffset + groupCount - 1);
+		currGrpNr = constrain(groupRoomOffset + roomNo, groupRoomOffset, groupRoomOffset + groupRoomCount - 1);
 	}
 	DEBUG_PRINT(currGrpNr);
 	DEBUG_PRINTLN(".");
 }
-void onButtonRoom1() { changeToRoom(1); }
-void onButtonRoom2() { changeToRoom(2); }
-void onButtonRoom3() { changeToRoom(3); }
-void onButtonRoom4() { changeToRoom(4); }
-
+void onButtonRoom1() { changeToRoom(0); }
+void onButtonRoom2() { changeToRoom(1); }
+void onButtonRoom3() { changeToRoom(2); }
+void onButtonRoom4() { changeToRoom(3); }
+void onButtonRoom5() { changeToRoom(4); }
+void onButtonRoom6() { changeToRoom(5); }
+void onButtonRoom7() { changeToRoom(6); }
+void onButtonRoom8() { changeToRoom(7); }
 void setup()
 {
 	Serial.begin(115200);
@@ -697,6 +743,8 @@ void setup()
 	DEBUG_PRINTLN("Setup: Setting up SmartCastle for Arduino");
 
 	DEBUG_PRINTLN("Setup: directly attaching buttons");
+	pinMode(BUTTON_PIN_START_STOP, INPUT_PULLUP);
+	attachInterrupt(BUTTON_PIN_START_STOP, onButtonStartStop, FALLING);
 	pinMode(BUTTON_PIN_FX, INPUT_PULLUP);
 	attachInterrupt(BUTTON_PIN_FX, onButtonFx, FALLING);
 	pinMode(BUTTON_PIN_COL, INPUT_PULLUP);
@@ -725,10 +773,15 @@ void setup()
 	attachInterrupt(I2C_INT_PIN, ISRgateway, FALLING);
 
 	DEBUG_PRINTLN("PCF8574: attaching button triggers.");
-	expander.attachInterrupt(0, onButtonRoom1, FALLING);
-	expander.attachInterrupt(1, onButtonRoom2, FALLING);
-	expander.attachInterrupt(2, onButtonRoom3, FALLING);
-	expander.attachInterrupt(3, onButtonRoom4, FALLING);
+	// Must map according to kaypad layout!!!
+	expander.attachInterrupt(0, onButtonRoom5, FALLING);
+	expander.attachInterrupt(1, onButtonRoom6, FALLING);
+	expander.attachInterrupt(2, onButtonRoom7, FALLING);
+	expander.attachInterrupt(3, onButtonRoom8, FALLING);
+	expander.attachInterrupt(4, onButtonRoom1, FALLING);
+	expander.attachInterrupt(5, onButtonRoom2, FALLING);
+	expander.attachInterrupt(6, onButtonRoom3, FALLING);
+	expander.attachInterrupt(7, onButtonRoom4, FALLING);
 
 #ifdef INCLUDE_WIFI
 	//InitWifi();
@@ -743,9 +796,9 @@ void setup()
 	maxColNr = ColorNames.size();
 
 	DEBUG_PRINTLN("FastLED: Initializing LED strip");
-	initStrip(pixelCount, true, true);
+	initStrip(true, true);
 	DEBUG_PRINT("FastLED: Amount of LEDs: ");
-	DEBUG_PRINTLN(pixelCount);
+	DEBUG_PRINTLN(PIXEL_COUNT);
 
 	DEBUG_PRINTLN("FastLED: Starting LED strip");
 	startStrip();
@@ -756,11 +809,15 @@ void setup()
 	SetColors(currGrpNr, defaultColNr);
 	startGroup(currGrpNr);
 */
-	for (int i = groupOffset + 1; i < neoGroups.size(); i++)
+	for (int i = groupRoomOffset; i < groupRoomCount + groupRoomOffset; i++)
 	{
 		DEBUG_PRINT("FastLED: Setting up and starting group #");
 		DEBUG_PRINTLN(i);
+#ifdef DO_NOT_START_FX_ON_INIT
 		SetEffect(i, defaultFxNr, false);
+#else
+		SetEffect(i, defaultFxNr, true);
+#endif
 #ifdef START_WITH_RANDOM_COLOR_PALETTE
 		// Random default color palette
 		int rndCol = random8(0, ColorNames.size() - 1);
@@ -770,9 +827,9 @@ void setup()
 		// Static default color palette
 		SetColors(i, defaultColNr);
 #endif
-		startGroup(i);
+		//startGroup(i);
 	}
-	currGrpNr = groupOffset + 1;
+	currGrpNr = groupRoomOffset;
 }
 
 // Main loop
@@ -787,6 +844,7 @@ void loop()
 	}
 
 	//DEBUG_PRINTLN("LOOP ------------------------------------------------------");
+	bool btnStartStopReleased = buttonStartStopPressed && !digitalRead(BUTTON_PIN_START_STOP);
 	bool btnFxReleased = buttonFxPressed && !digitalRead(BUTTON_PIN_FX);
 	bool btnColReleased = buttonColPressed && !digitalRead(BUTTON_PIN_COL);
 	if (bothButtonsPressed &&
@@ -833,6 +891,12 @@ void loop()
 			}
 			*/
 		}
+		if (buttonStartStopPressed && btnStartStopReleased)
+		{
+			DEBUG_PRINTLN("Loop: button 'Start/Stop' pressed and released.");
+			StartStopEffect(currGrpNr);
+			buttonStartStopPressed = false;
+		}
 	}
 
 	if (!ledsStarted)
@@ -843,25 +907,24 @@ void loop()
 
 	bool isActiveMainGrp = false;
 	bool ledsUpdated = false;
-	for (int i = groupOffset; i < neoGroups.size(); i++)
+	for (int i = groupRoomOffset; i < groupRoomCount + groupRoomOffset; i++)
 	{
 		NeoGroup *neoGroup = &(neoGroups.at(i));
-		if (neoGroup->LedCount <= pixelCount)
+		if ((neoGroup->LedFirstNr + neoGroup->LedCount) <= PIXEL_COUNT)
 		{
-			//DEBUG_PRINT("Loop: Updating group ");
-			//DEBUG_PRINTLN(i);
+#ifdef DEBUG_LOOP
+/*
+			DEBUG_PRINT("Loop: Updating group ");
+			DEBUG_PRINTLN(i);
+*/
+#endif
 			ledsUpdated |= neoGroup->Update();
 		}
 
-		if (i == groupOffset)
+		if (i == groupRoomOffset - 1) // is all rooms' LED group?
 			isActiveMainGrp = neoGroup->Active;
-		if (i > groupOffset && isActiveMainGrp)
+		if (i > (groupRoomOffset - 1) && isActiveMainGrp)
 			break; // Don't update other groups if main group (all LEDs) is active
-	}
-	if (ledsUpdated)
-	{
-		//DEBUG_PRINTLN("Loop: Refreshing LEDs.");
-		FastLED.show();
 	}
 #ifdef INCLUDE_WIFI
 /*
@@ -888,30 +951,62 @@ void loop()
 	static uint8_t currentBrightnessIdx = 0;
 	if ((millis() - lastUpdate) > updateInterval)
 	{
-		/*
+#ifdef DEBUG_LOOP
 		DEBUG_PRINT("Updating status LEDS (idx:");
 		DEBUG_PRINT(statusIdx);
 		DEBUG_PRINT(")...");
-		*/
+#endif
 		NeoGroup *neoGroupStatus = &(neoGroups.at(1));
-		for (int i = groupOffset; i < neoGroups.size(); i++)
+		for (int i = 0; i < groupRoomCount; i++)
 		{
-			NeoGroup *neoGroup = &(neoGroups.at(i));
-			uint8_t currentBrightness =
-				i == currGrpNr
-					? quadwave8(currentBrightnessIdx)
-					: 128;
+#ifdef DEBUG_LOOP
+			DEBUG_PRINT(i);
+#endif
+			NeoGroup *neoGroup = &(neoGroups.at(i + groupRoomOffset));
+			uint8_t currentBrightness = 128;
+			if (i == (currGrpNr - groupRoomOffset))
+			{
+				currentBrightness = quadwave8(currentBrightnessIdx);
+				currentBrightness = 15 + currentBrightness - (currentBrightness >> 4);
+#ifdef DEBUG_LOOP
+				DEBUG_PRINT("(active)");
+#endif
+			}
+			if (!neoGroup->Active)
+			{
+				// lower brightness of status LED if FX for group is not running
+				currentBrightness = currentBrightness >> 2;
+#ifdef DEBUG_LOOP
+				DEBUG_PRINT("(off)");
+#endif
+			}
+#ifdef DEBUG_LOOP
+			else
+			{
+				DEBUG_PRINT("(on)");
+			}
+#endif
 			CRGB statusColor = neoGroup->GetColorFromPaletteAt(statusIdx, currentBrightness);
-			//neoGroupStatus[i - groupOffset] = statusColor;
-			neoGroupStatus->SetPixel(i - groupOffset, statusColor);
-			//DEBUG_PRINT(".");
+			neoGroupStatus->SetPixel(i, statusColor);
+#ifdef DEBUG_LOOP
+			DEBUG_PRINT(i);
+			DEBUG_PRINT("...");
+#endif
 		}
-		//DEBUG_PRINTLN("DONE");
+#ifdef DEBUG_LOOP
+		DEBUG_PRINTLN("DONE");
+#endif
 		statusIdx++;
 		currentBrightnessIdx += 3;
+		ledsUpdated = true;
 		lastUpdate = millis();
 	}
 
-	//pixelCount = count; //PIXEL_COUNT;
-	groupCount = neoGroups.size() - groupOffset; // Don't count main groups (all LEDs)
+	if (ledsUpdated)
+	{
+#ifdef DEBUG_LOOP
+		DEBUG_PRINTLN("Loop: Refreshing LEDs.");
+#endif
+		FastLED.show();
+	}
 }

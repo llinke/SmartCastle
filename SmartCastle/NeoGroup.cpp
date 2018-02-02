@@ -65,6 +65,7 @@ class NeoGroup
 
   public:
 	String GroupID;
+	int LedFirstNr;
 	int LedCount;
 	bool Active;
 
@@ -73,6 +74,7 @@ class NeoGroup
 		GroupID = groupID;
 		Active = false;
 		fxStep = 0;
+		LedFirstNr = ledFirst;
 		LedFirst = &leds[ledFirst];
 		LedCount = ledCount;
 		LedOffset = ledOffset;
