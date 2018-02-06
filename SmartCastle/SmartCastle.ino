@@ -58,7 +58,12 @@ const String wifiApName = "AP_SmartCastle";
 const int ConfigureAPTimeout = 10;
 #endif
 
-int globalBrightness = 96;
+const uint8_t globalBrightness = 96;
+const uint8_t statusBrightness = 64;
+
+const int buttonLockDuration = 200; // ignore buttons for X ms, prevent prelling
+static volatile bool buttonsLocked = false;
+static volatile int buttonsLockedAt = 0;
 
 static volatile bool buttonPressedOnI2C = false;
 static volatile bool roomWasChanged = false;
@@ -713,22 +718,27 @@ void onButtonCol()
 
 void changeToRoom(int roomNo = -1)
 {
-	DEBUG_PRINT("PCF8574: switching to room ");
-	DEBUG_PRINT(roomNo + 1);
-	DEBUG_PRINT("->");
-	if (roomNo < 0)
+	if (!areButtonsLocked())
 	{
-		currGrpNr++;
-		if (currGrpNr >= (groupRoomCount + groupRoomOffset))
-			currGrpNr = groupRoomOffset;
+		lockButtons();
+
+		DEBUG_PRINT("PCF8574: switching to room ");
+		DEBUG_PRINT(roomNo + 1);
+		DEBUG_PRINT("->");
+		if (roomNo < 0)
+		{
+			currGrpNr++;
+			if (currGrpNr >= (groupRoomCount + groupRoomOffset))
+				currGrpNr = groupRoomOffset;
+		}
+		else
+		{
+			currGrpNr = constrain(groupRoomOffset + roomNo, groupRoomOffset, groupRoomOffset + groupRoomCount - 1);
+		}
+		DEBUG_PRINT(currGrpNr);
+		DEBUG_PRINTLN(".");
+		roomWasChanged = true;
 	}
-	else
-	{
-		currGrpNr = constrain(groupRoomOffset + roomNo, groupRoomOffset, groupRoomOffset + groupRoomCount - 1);
-	}
-	DEBUG_PRINT(currGrpNr);
-	DEBUG_PRINTLN(".");
-	roomWasChanged = true;
 }
 void onButtonRoom1() { changeToRoom(0); }
 void onButtonRoom2() { changeToRoom(1); }
@@ -738,6 +748,7 @@ void onButtonRoom5() { changeToRoom(4); }
 void onButtonRoom6() { changeToRoom(5); }
 void onButtonRoom7() { changeToRoom(6); }
 void onButtonRoom8() { changeToRoom(7); }
+
 void setup()
 {
 	Serial.begin(115200);
@@ -835,6 +846,30 @@ void setup()
 	currGrpNr = groupRoomOffset;
 }
 
+void lockButtons()
+{
+	buttonsLocked = true;
+	buttonsLockedAt = millis();
+}
+
+bool areButtonsLocked()
+{
+	if (buttonsLocked)
+	{
+		uint32_t lockedAgo = buttonsLockedAt > 0 ? millis() - buttonsLockedAt : buttonLockDuration;
+		if (lockedAgo < buttonLockDuration)
+		{
+			DEBUG_PRINT("Buttons STILL LOCKED, locked just ");
+			DEBUG_PRINT(lockedAgo);
+			DEBUG_PRINTLN("ms ago...");
+			return true;
+		}
+		buttonsLocked = false;
+	}
+	//DEBUG_PRINTLN("Buttons not locked.");
+	return false;
+}
+
 // Main loop
 void loop()
 {
@@ -872,20 +907,32 @@ void loop()
 	{
 		if (buttonFxPressed && btnFxReleased) // Button was released
 		{
-			DEBUG_PRINTLN("Loop: button 'FX' pressed and released.");
-			NextEffect();
+			if (!areButtonsLocked())
+			{
+				lockButtons();
+				DEBUG_PRINTLN("Loop: button 'FX' pressed and released.");
+				NextEffect();
+			}
 			buttonFxPressed = false;
 		}
 		if (buttonColPressed && btnColReleased) // Button was released
 		{
-			DEBUG_PRINTLN("Loop: button 'colors' pressed and releases.");
-			NextColor();
+			if (!areButtonsLocked())
+			{
+				lockButtons();
+				DEBUG_PRINTLN("Loop: button 'colors' pressed and releases.");
+				NextColor();
+			}
 			buttonColPressed = false;
 		}
 		if (buttonStartStopPressed && btnStartStopReleased)
 		{
-			DEBUG_PRINTLN("Loop: button 'Start/Stop' pressed and released.");
-			StartStopEffect(currGrpNr);
+			if (!areButtonsLocked())
+			{
+				lockButtons();
+				DEBUG_PRINTLN("Loop: button 'Start/Stop' pressed and released.");
+				StartStopEffect(currGrpNr);
+			}
 			buttonStartStopPressed = false;
 		}
 	}
@@ -970,7 +1017,7 @@ void loop()
 			DEBUG_PRINT(i);
 #endif
 			NeoGroup *neoGroup = &(neoGroups.at(i + groupRoomOffset));
-			uint8_t currentBrightness = 128;
+			uint8_t currentBrightness = statusBrightness;
 			if (i == (currGrpNr - groupRoomOffset))
 			{
 				currentBrightness = quadwave8(currentBrightnessIdx);
@@ -993,7 +1040,11 @@ void loop()
 				DEBUG_PRINT("(on)");
 			}
 #endif
-			CRGB statusColor = neoGroup->GetColorFromPaletteAt(statusIdx, currentBrightness);
+			// no color cycling if group is not active
+			CRGB statusColor =
+				(neoGroup->Active)
+					? neoGroup->GetColorFromPaletteAt(statusIdx, currentBrightness)
+					: neoGroup->GetColorFromPaletteAt(0, currentBrightness);
 			neoGroupStatus->SetPixel(i, statusColor);
 #ifdef DEBUG_LOOP
 			DEBUG_PRINT(i);
@@ -1016,4 +1067,9 @@ void loop()
 #endif
 		FastLED.show();
 	}
+
+	/*
+	if (buttonsLocked) // unlock buttons after a lock time passed
+		areButtonsLocked();
+	*/
 }

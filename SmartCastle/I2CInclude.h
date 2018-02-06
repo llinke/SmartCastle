@@ -6,8 +6,8 @@
 
 // Pin definitions for I2C OLED
 const uint8_t I2C_EXPANDER_ADDRESS = 0x20;
-const int I2C_SDA_PIN = D2;
-const int I2C_SDC_PIN = D1;
+const int I2C_SDA_PIN = D1;
+const int I2C_SDC_PIN = D2;
 const int I2C_INT_PIN = D4;
 const int I2C_BUS_SPEED = 100000; // 100kHz for PCF8574
 

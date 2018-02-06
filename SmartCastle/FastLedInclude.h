@@ -16,9 +16,9 @@ FASTLED_USING_NAMESPACE
 
 #define PIXEL_COUNT 136
 
-#define BUTTON_PIN_START_STOP D7
+#define BUTTON_PIN_START_STOP D6
 #define BUTTON_PIN_FX D5
-#define BUTTON_PIN_COL D6
+#define BUTTON_PIN_COL D7
 
 // Static size:
 //extern struct CRGB leds[];
