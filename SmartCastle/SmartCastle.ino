@@ -67,6 +67,8 @@ const std::vector<int> groupRoomSizes = {16, 16, 16, 32, 16, 16, 16};
 //const std::vector<int> groupRoomSizes = {4, 8, 12, 16, 16, 20, 24, 28};
 const std::vector<int> groupRoomSizes = {8, 24, 10, 22, 12, 20, 14, 18};
 #endif
+const std::vector<int> mapRoomToStatusLed = {7, 6, 5, 4, 0, 1, 2, 3};
+const std::vector<int> mapI2cButtonToRoom = {4, 5, 6, 7, 0, 1, 2, 3};
 int groupRoomTotalSize = 0;
 int groupRoomCount = 0;
 int groupRoomOffset = 1;
@@ -572,14 +574,14 @@ void changeToRoom(int roomNo = -1)
 		roomWasChanged = true;
 	}
 }
-void onButtonRoom1() { changeToRoom(0); }
-void onButtonRoom2() { changeToRoom(1); }
-void onButtonRoom3() { changeToRoom(2); }
-void onButtonRoom4() { changeToRoom(3); }
-void onButtonRoom5() { changeToRoom(4); }
-void onButtonRoom6() { changeToRoom(5); }
-void onButtonRoom7() { changeToRoom(6); }
-void onButtonRoom8() { changeToRoom(7); }
+void onButton1() { changeToRoom(mapI2cButtonToRoom.at(0)); }
+void onButton2() { changeToRoom(mapI2cButtonToRoom.at(1)); }
+void onButton3() { changeToRoom(mapI2cButtonToRoom.at(2)); }
+void onButton4() { changeToRoom(mapI2cButtonToRoom.at(3)); }
+void onButton5() { changeToRoom(mapI2cButtonToRoom.at(4)); }
+void onButton6() { changeToRoom(mapI2cButtonToRoom.at(5)); }
+void onButton7() { changeToRoom(mapI2cButtonToRoom.at(6)); }
+void onButton8() { changeToRoom(mapI2cButtonToRoom.at(7)); }
 
 void setup()
 {
@@ -620,14 +622,14 @@ void setup()
 
 	DEBUG_PRINTLN("PCF8574: attaching button triggers.");
 	// Must map according to kaypad layout!!!
-	expander.attachInterrupt(0, onButtonRoom5, FALLING);
-	expander.attachInterrupt(1, onButtonRoom6, FALLING);
-	expander.attachInterrupt(2, onButtonRoom7, FALLING);
-	expander.attachInterrupt(3, onButtonRoom8, FALLING);
-	expander.attachInterrupt(4, onButtonRoom1, FALLING);
-	expander.attachInterrupt(5, onButtonRoom2, FALLING);
-	expander.attachInterrupt(6, onButtonRoom3, FALLING);
-	expander.attachInterrupt(7, onButtonRoom4, FALLING);
+	expander.attachInterrupt(0, onButton1, FALLING);
+	expander.attachInterrupt(1, onButton2, FALLING);
+	expander.attachInterrupt(2, onButton3, FALLING);
+	expander.attachInterrupt(3, onButton4, FALLING);
+	expander.attachInterrupt(4, onButton5, FALLING);
+	expander.attachInterrupt(5, onButton6, FALLING);
+	expander.attachInterrupt(6, onButton7, FALLING);
+	expander.attachInterrupt(7, onButton8, FALLING);
 
 #ifdef INCLUDE_WIFI
 	//InitWifi();
@@ -820,15 +822,15 @@ void loop()
 		DEBUG_PRINT(")...");
 #endif
 		NeoGroup *neoGroupStatus = &(neoGroups.at(groupNrStatus));
-		for (int statusLedNr = 0; statusLedNr < groupRoomCount; statusLedNr++)
+		for (int statusForRoomNr = 0; statusForRoomNr < groupRoomCount; statusForRoomNr++)
 		{
-			int offsetGrpNr = groupRoomOffset + statusLedNr;
+			int offsetGrpNr = groupRoomOffset + statusForRoomNr;
 #ifdef DEBUG_LOOP
-			DEBUG_PRINT(statusLedNr);
+			DEBUG_PRINT(statusForRoomNr);
 #endif
 			NeoGroup *neoGroup = &(neoGroups.at(offsetGrpNr));
 			uint8_t currentBrightness = statusBrightness;
-			if (statusLedNr == activeGrpNr)
+			if (statusForRoomNr == activeGrpNr)
 			{
 				currentBrightness = quadwave8(currentBrightnessIdx);
 				currentBrightness = 15 + currentBrightness - (currentBrightness >> 4);
@@ -862,7 +864,7 @@ void loop()
 				statusColor = CRGB(0x303030); // grey if "All rooms" group is active
 			}
 #endif
-			neoGroupStatus->SetPixel(statusLedNr, statusColor);
+			neoGroupStatus->SetPixel(mapRoomToStatusLed.at(statusForRoomNr), statusColor);
 #ifdef DEBUG_LOOP
 			DEBUG_PRINT("...");
 #endif
