@@ -204,15 +204,14 @@ class NeoGroup
 				DEBUG_PRINTLN(" CRGB colors.");
 
 				crossFadeColors = crossFade;
-				DEBUG_PRINT("CfgColor: Crossfade to new palette: ");
-				DEBUG_PRINTLN(crossFadeColors);
-
 				if (crossFadeColors)
 				{
+					DEBUG_PRINTLN("CfgColor: Crossfading to new palette.");
 					colorPaletteNew = GenerateRGBPalette(currentColors);
 				}
 				else
 				{
+					DEBUG_PRINTLN("CfgColor: Switching to new palette.");
 					colorPalette = GenerateRGBPalette(currentColors);
 				}
 			}

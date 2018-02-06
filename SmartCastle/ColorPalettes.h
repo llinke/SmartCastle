@@ -96,8 +96,59 @@ void AddColorPalette(
     }
 }
 
+std::vector<CRGB> SimplePaletteFromColor(
+    CRGB baseCol, int variants = 1, uint8_t variantBy = 32)
+{
+    std::vector<CRGB> newPal;
+    CRGB rgb = CRGB(baseCol);
+    newPal.push_back(rgb);
+    for (int i = 0; i < variants; i++)
+    {
+        CHSV hsv = rgb2hsv_approximate(rgb);
+        hsv.h += 32;
+        rgb = CRGB(hsv);
+        newPal.push_back(rgb);
+    }
+    return newPal;
+}
+
 void InitColorPalettes()
 {
+    AddColorPalette("hot pink", SimplePaletteFromColor(CRGB(0xFF0066)));
+    AddColorPalette("immensity1", SimplePaletteFromColor(CRGB(0x6F9DD1)));
+    AddColorPalette("immensity2", SimplePaletteFromColor(CRGB(0x647497)));
+    AddColorPalette("immensity3", SimplePaletteFromColor(CRGB(0x665467)));
+    AddColorPalette("immensity4", SimplePaletteFromColor(CRGB(0xB06A67)));
+    AddColorPalette("immensity5", SimplePaletteFromColor(CRGB(0xF16260)));
+    AddColorPalette("dutch teal", SimplePaletteFromColor(CRGB(0x1693A5)));
+    AddColorPalette("heart of gold", SimplePaletteFromColor(CRGB(0xFBB829)));
+    AddColorPalette("heart of gold 2", SimplePaletteFromColor(CRGB(0xFBB829)), false);
+    AddColorPalette("hot p wow ink", SimplePaletteFromColor(CRGB(0xC61AE9)));
+    AddColorPalette("blue bb", SimplePaletteFromColor(CRGB(0x93A5CC)));
+    AddColorPalette("Cascadian Blue", SimplePaletteFromColor(CRGB(0x234B79)));
+    AddColorPalette("Outland Terrain", SimplePaletteFromColor(CRGB(0x318D6B)));
+    AddColorPalette("Acorus", SimplePaletteFromColor(CRGB(0x36A44A)));
+    AddColorPalette("Summer Sky", SimplePaletteFromColor(CRGB(0x37A2BF)));
+    AddColorPalette("Carry me tonight", SimplePaletteFromColor(CRGB(0xC623A9)));
+    return;
+    /*
+    AddColorPalette("DeepPinkAnalogous", {CRGB(0xff1493), CRGB(0xff1445), CRGB(0xff14e1), CRGB(0xff7ac2), CRGB(0x898989), CRGB(0xffffff)});
+    AddColorPalette("DeepPinkMonocromatic", {CRGB(0xff1493), CRGB(0x7a0042), CRGB(0xffadd9), CRGB(0x898989)});
+    AddColorPalette("DeepPinkComplementary", {CRGB(0xff1493), CRGB(0xff1445), CRGB(0x14ff80)});
+    AddColorPalette("DeepPinkSplit Complementary", {CRGB(0xff1493), CRGB(0xff1445), CRGB(0x1eff14), CRGB(0x14fff5), CRGB(0x898989), CRGB(0xffffff)});
+    AddColorPalette("DeepPinkTriadic", {CRGB(0xff1493), CRGB(0x93ff14), CRGB(0x1493ff)});
+    AddColorPalette("DarkTurquoiseAnalogous", {CRGB(0x00ced1), CRGB(0x0088d1), CRGB(0x00d18e), CRGB(0x38fcff), CRGB(0x686868), CRGB(0x000000)});
+    AddColorPalette("DarkTurquoiseMonocromatic", {CRGB(0x00ced1), CRGB(0x003738), CRGB(0x6bfdff), CRGB(0x686868)});
+    AddColorPalette("DarkTurquoiseComplementary", {CRGB(0x00ced1), CRGB(0x0088d1), CRGB(0xd10300)});
+    AddColorPalette("DarkTurquoiseSplit Complementary", {CRGB(0x00ced1), CRGB(0x0088d1), CRGB(0xd10066), CRGB(0xd16b00), CRGB(0x686868), CRGB(0x000000)});
+    AddColorPalette("DarkTurquoiseTriadic", {CRGB(0x00ced1), CRGB(0xd100ce), CRGB(0xced100)});
+    AddColorPalette("DarkVioletAnalogous", {CRGB(0x9400d3), CRGB(0xd300cc), CRGB(0x4e00d3), CRGB(0xc43aff), CRGB(0x696969), CRGB(0x000000)});
+    AddColorPalette("DarkVioletMonocromatic", {CRGB(0x9400d3), CRGB(0x29003a), CRGB(0xd36dff), CRGB(0x696969)});
+    AddColorPalette("DarkVioletComplementary", {CRGB(0x9400d3), CRGB(0xd300cc), CRGB(0x3fd300)});
+    AddColorPalette("DarkVioletSplit Complementary", {CRGB(0x9400d3), CRGB(0xd300cc), CRGB(0xa8d300), CRGB(0x00d32b), CRGB(0x696969), CRGB(0x000000)});
+    AddColorPalette("DarkVioletTriadic", {CRGB(0x9400d3), CRGB(0xd39400), CRGB(0x00d394)});
+    */
+
     AddColorPalette("Party", {CRGB(0x5500AB), CRGB(0x84007C), CRGB(0xB5004B), CRGB(0xE5001B), CRGB(0xE81700), CRGB(0xB84700), CRGB(0xAB7700), CRGB(0xABAB00), CRGB(0xAB5500), CRGB(0xDD2200), CRGB(0xF2000E), CRGB(0xC2003E), CRGB(0x8F0071), CRGB(0x5F00A1), CRGB(0x2F00D0), CRGB(0x0007F9)});
     AddColorPalette("Blues", {CRGB(0x4AD8DB), CRGB(0xD30081), CRGB(0x780072), CRGB(0x1A46F4), CRGB(0x02155B)});
     AddColorPalette("DayAndNight", {CRGB(0x00C17D), CRGB(0x00E999), CRGB(0xEF9000), CRGB(0xEDEA01), CRGB(0xFFF439)});
