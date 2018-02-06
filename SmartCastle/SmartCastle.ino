@@ -9,11 +9,10 @@
 // *** Compiler Flags
 // **************************************************
 //#define INCLUDE_WIFI
-#define ADD_GROUP_FOR_ALL_ROOMS
-//#define SINGLE_ROOM
+#define FIRST_GROUP_IS_ALL_ROOMS
 //#define START_WITH_RANDOM_COLOR_PALETTE
-//#define DEBUG_LOOP
 //#define DO_NOT_START_FX_ON_INIT
+//#define DEBUG_LOOP
 
 // **************************************************
 // *** Includes
@@ -36,17 +35,6 @@
 #include <WiFiManager.h>	  //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
 #endif
 
-// **************************************************
-// *** Blynk settings
-// **************************************************
-/*
-#define BLYNK_PRINT Serial
-#define BLYNK_MAX_SENDBYTES 512 // Default is 128
-#include <BlynkSimpleEsp8266.h>
-// Device 'SmartCastle':
-const char blynkAuth[] = "4abfe0577ae745aca3d5d5d9f37911b7";
-*/
-
 // Helper macro
 #define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
 
@@ -60,6 +48,7 @@ const int ConfigureAPTimeout = 10;
 
 const uint8_t globalBrightness = 96;
 const uint8_t statusBrightness = 64;
+const uint8_t activeGroupBrightnessCycleSpeed = 3;
 
 const int buttonLockDuration = 200; // ignore buttons for X ms, prevent prelling
 static volatile bool buttonsLocked = false;
@@ -68,19 +57,24 @@ static volatile int buttonsLockedAt = 0;
 static volatile bool buttonPressedOnI2C = false;
 static volatile bool roomWasChanged = false;
 
+#ifdef FIRST_GROUP_IS_ALL_ROOMS
+// Test 0: equally sized rooms (one less)
+const std::vector<int> groupRoomSizes = {16, 16, 16, 32, 16, 16, 16};
+#else
 // Test 1: equally sized rooms
 //const std::vector<int> groupRoomSizes = {16, 16, 16, 16, 16, 16, 16, 16};
 // Test 2: differently sized rooms
 //const std::vector<int> groupRoomSizes = {4, 8, 12, 16, 16, 20, 24, 28};
 const std::vector<int> groupRoomSizes = {8, 24, 10, 22, 12, 20, 14, 18};
+#endif
 int groupRoomTotalSize = 0;
 int groupRoomCount = 0;
-#ifdef ADD_GROUP_FOR_ALL_ROOMS
-int groupRoomOffset = 3;
-#else
-int groupRoomOffset = 2;
-#endif
-int currGrpNr = groupRoomOffset;
+int groupRoomOffset = 1;
+int groupNrAllLeds = 0;
+int groupNrAllRooms = -1;
+int groupNrStatus = 1;
+const int groupStatusCount = 8;
+int activeGrpNr = groupRoomOffset;
 
 // Static size
 //struct CRGB leds[PIXEL_COUNT];
@@ -166,61 +160,6 @@ bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 }
 #endif
 
-/*
-void InitBlynk()
-{
-	if (WiFi.status() != WL_CONNECTED)
-		return;
-
-	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
-	DEBUG_PRINTLN("Blynk: authenticating");
-	Blynk.config(blynkAuth);
-	Blynk.connect();
-
-	SendMenusToBlynk();
-	SendStatusToBlynk();
-}
-
-void SendMenusToBlynk()
-{
-	if (WiFi.status() != WL_CONNECTED)
-		return;
-
-	DEBUG_PRINTLN("Blynk: assigning menu 'FX'");
-	BlynkParamAllocated fxItems(128);
-	fxItems.add("Zufällig");
-	fxItems.add("Lauflicht");
-	fxItems.add("Dynamisch");
-	fxItems.add("Wasser");
-	fxItems.add("Konfetti");
-	fxItems.add("Farbwechsel");
-	Blynk.setProperty(V2, "labels", fxItems);
-
-	DEBUG_PRINTLN("Blynk: assigning menu 'Colors'");
-	BlynkParamAllocated colItems(128);
-	colItems.add("Zufällig");
-	for (int i = 0; i < ColorNames.size(); i++)
-	{
-		colItems.add(ColorNames[i]);
-	}
-	Blynk.setProperty(V4, "labels", colItems);
-}
-
-void SendStatusToBlynk()
-{
-	if (WiFi.status() != WL_CONNECTED)
-		return;
-
-	DEBUG_PRINTLN("Blynk: sending current status");
-	Blynk.virtualWrite(V0, ledsStarted);
-	Blynk.virtualWrite(V2, currFxNr.at(currGrpNr) + 1);
-	Blynk.virtualWrite(V4, currColNr.at(currGrpNr) + 1);
-	Blynk.virtualWrite(V5, currGlitter.at(currGrpNr));
-	Blynk.virtualWrite(V6, globalBrightness);
-	Blynk.virtualWrite(V7, currFps.at(currGrpNr));
-}
-*/
-
 int initStrip(bool doStart = false, bool playDemo = true)
 {
 	if (ledsInitialized)
@@ -255,10 +194,6 @@ int initStrip(bool doStart = false, bool playDemo = true)
 
 #ifdef INCLUDE_WIFI
 	InitWifi();
-	/*
-	if (InitWifi())
-		InitBlynk();
-	*/
 #endif
 
 	if (playDemo)
@@ -277,27 +212,32 @@ int initStrip(bool doStart = false, bool playDemo = true)
 
 	DEBUG_PRINTLN("Calculating groups.");
 	groupRoomCount = groupRoomSizes.size();
+#ifdef FIRST_GROUP_IS_ALL_ROOMS
+	groupRoomCount++;
+#endif
 	groupRoomTotalSize = 0;
 	for (int i = 0; i < groupRoomSizes.size(); i++)
+	{
 		groupRoomTotalSize += groupRoomSizes[i];
+	}
 
 	DEBUG_PRINTLN("Adding special groups.");
 	neoGroups.clear();
 	// Group 0: all LEDs
-	addGroup("  All LEDs group", 0, PIXEL_COUNT, 0);
+	addGroup("  All LEDs' group", 0, PIXEL_COUNT, 0);
+	groupNrAllLeds = neoGroups.size() - 1;
 	// Group 1: Status LEDs
-	addGroup("  Status LED group", 0, groupRoomCount, 0);
-#ifdef ADD_GROUP_FOR_ALL_ROOMS
-	// Group 2: all rooms' LEDs
-	addGroup("  All rooms LED group", groupRoomCount, groupRoomTotalSize, 0);
+	addGroup("  Status LEDs' group", 0, groupStatusCount, 0);
+	groupNrStatus = neoGroups.size() - 1;
+#ifdef FIRST_GROUP_IS_ALL_ROOMS
+	addGroup("  All rooms' LED group", groupStatusCount, groupRoomTotalSize, 0);
+	groupNrAllRooms = neoGroups.size() - 1;
 #endif
+	groupRoomOffset = groupNrAllRooms >= 0 ? groupNrAllRooms : neoGroups.size();
+	activeGrpNr = 0;
 
-#ifdef SINGLE_ROOM
-	DEBUG_PRINTLN("LED group for single room.");
-	addGroup("Room 1", groupRoomCount, groupRoomTotalSize, 0);
-#else
 	DEBUG_PRINTLN("Adding groups for rooms.");
-	int nextGroupStart = groupRoomCount; // Start after status LEDs
+	int nextGroupStart = groupStatusCount; // Start after status LEDs
 	for (int i = 0; i < groupRoomSizes.size(); i++)
 	{
 		String roomName = "Room " + String(i + 1);
@@ -310,7 +250,6 @@ int initStrip(bool doStart = false, bool playDemo = true)
 		addGroup(roomName, nextGroupStart, groupRoomSizes[i], 0);
 		nextGroupStart += groupRoomSizes[i];
 	}
-#endif
 
 	return doStart ? startStrip() : PIXEL_COUNT;
 }
@@ -545,146 +484,39 @@ void SetColors(int grpNr, int colNr)
 
 void NextEffect(int nextFx = -1)
 {
+	int offsetGrpNr = groupRoomOffset + activeGrpNr;
 	if (nextFx < 0)
 	{
-		(currFxNr.at(currGrpNr))++;
+		(currFxNr.at(offsetGrpNr))++;
 	}
 	else
 	{
-		currFxNr.at(currGrpNr) = nextFx;
+		currFxNr.at(offsetGrpNr) = nextFx;
 	}
-	if (currFxNr.at(currGrpNr) > maxFxNr)
-		currFxNr.at(currGrpNr) = 0;
+	if (currFxNr.at(offsetGrpNr) > maxFxNr)
+		currFxNr.at(offsetGrpNr) = 0;
 	DEBUG_PRINT("CONTROL: Button 'FX' pressed, changing effect number to: ");
-	DEBUG_PRINTLN(currFxNr.at(currGrpNr));
-	SetEffect(currGrpNr, currFxNr.at(currGrpNr), true);
+	DEBUG_PRINTLN(currFxNr.at(offsetGrpNr));
+	SetEffect(offsetGrpNr, currFxNr.at(offsetGrpNr), true);
 }
 
 void NextColor(int nextCol = -1)
 {
+	int offsetGrpNr = groupRoomOffset + activeGrpNr;
 	if (nextCol < 0)
 	{
-		(currColNr.at(currGrpNr))++;
+		(currColNr.at(offsetGrpNr))++;
 	}
 	else
 	{
-		currColNr.at(currGrpNr) = nextCol;
+		currColNr.at(offsetGrpNr) = nextCol;
 	}
-	if (currColNr.at(currGrpNr) > maxColNr)
-		currColNr.at(currGrpNr) = 0;
+	if (currColNr.at(offsetGrpNr) > maxColNr)
+		currColNr.at(offsetGrpNr) = 0;
 	DEBUG_PRINT("CONTROL: Button 'Colors' pressed, changing color number to: ");
-	DEBUG_PRINTLN(currColNr.at(currGrpNr));
-	SetColors(currGrpNr, currColNr.at(currGrpNr));
+	DEBUG_PRINTLN(currColNr.at(offsetGrpNr));
+	SetColors(offsetGrpNr, currColNr.at(offsetGrpNr));
 }
-
-/*
-BLYNK_WRITE(V0) // Button "Power"
-{
-	int pinValue = param.asInt();
-	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
-	DEBUG_PRINT("Blynk-Button 'POWER' pressed: ");
-	DEBUG_PRINTLN(pinValue);
-	if (pinValue == 1)
-	{
-		if (!ledsStarted)
-		{
-			startStrip();
-			startGroup(currGrpNr);
-		}
-	}
-	else
-	{
-		if (ledsStarted)
-		{
-			stopGroup(currGrpNr);
-			stopStrip();
-		}
-	}
-}
-
-BLYNK_WRITE(V1) // Button "FX"
-{
-	int pinValue = param.asInt();
-	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
-	DEBUG_PRINT("Blynk-Button 'FX' pressed: ");
-	DEBUG_PRINTLN(pinValue);
-	if (pinValue == 1)
-	{
-		NextEffect();
-		Blynk.virtualWrite(V2, (currFxNr.at(currGrpNr)) + 1);
-	}
-}
-
-BLYNK_WRITE(V2) // DropDown "FX"
-{
-	int pinValue = param.asInt() - 1;
-	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
-	DEBUG_PRINT("Blynk-DropDown 'FX' selected: ");
-	DEBUG_PRINTLN(pinValue);
-	NextEffect(pinValue);
-}
-
-BLYNK_WRITE(V3) // Button "Color"
-{
-	int pinValue = param.asInt();
-	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
-	DEBUG_PRINT("Blynk-Button 'Colors' pressed: ");
-	DEBUG_PRINTLN(pinValue);
-	if (pinValue == 1)
-	{
-		NextColor();
-		Blynk.virtualWrite(V4, (currColNr.at(currGrpNr)) + 1);
-	}
-}
-
-BLYNK_WRITE(V4) // DropDown "Colors"
-{
-	int pinValue = param.asInt() - 1;
-	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
-	DEBUG_PRINT("Blynk-DropDown 'Colors' selected: ");
-	DEBUG_PRINTLN(pinValue);
-	NextColor(pinValue);
-}
-
-BLYNK_WRITE(V5) // Slider "Glitter"
-{
-	int pinValue = param.asInt();
-	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
-	DEBUG_PRINT("Blynk-Slider 'Glitter' selected: ");
-	DEBUG_PRINTLN(pinValue);
-	currGlitter.at(currGrpNr) = pinValue;
-	NeoGroup *neoGroup = &(neoGroups.at(currGrpNr));
-	neoGroup->ChangeGlitter(currGlitter.at(currGrpNr));
-}
-
-BLYNK_WRITE(V6) // Slider "Brightness"
-{
-	int pinValue = param.asInt();
-	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
-	DEBUG_PRINT("Blynk-Slider 'Brightness' selected: ");
-	DEBUG_PRINTLN(pinValue);
-	globalBrightness = pinValue;
-	FastLED.setBrightness(pinValue);
-	FastLED.setDither(0);
-}
-
-BLYNK_WRITE(V7) // Slider "Speed"
-{
-	int pinValue = param.asInt();
-	DEBUG_PRINTLN("BLYNK -----------------------------------------------------");
-	DEBUG_PRINT("Blynk-Slider 'Speed' selected: ");
-	DEBUG_PRINTLN(pinValue);
-	currFps.at(currGrpNr) = pinValue;
-	NeoGroup *neoGroup = &(neoGroups.at(currGrpNr));
-	neoGroup->ChangeFps(currFps.at(currGrpNr));
-}
-BLYNK_APP_CONNECTED()
-{
-	SendMenusToBlynk();
-	SendStatusToBlynk();
-	//Blynk.syncAll();
-}
-*/
 
 // **************************************************
 // *** Event Handlers (Buttons, Tickers)
@@ -727,15 +559,15 @@ void changeToRoom(int roomNo = -1)
 		DEBUG_PRINT("->");
 		if (roomNo < 0)
 		{
-			currGrpNr++;
-			if (currGrpNr >= (groupRoomCount + groupRoomOffset))
-				currGrpNr = groupRoomOffset;
+			activeGrpNr++;
+			if (activeGrpNr >= groupRoomCount)
+				activeGrpNr = 0;
 		}
 		else
 		{
-			currGrpNr = constrain(groupRoomOffset + roomNo, groupRoomOffset, groupRoomOffset + groupRoomCount - 1);
+			activeGrpNr = constrain(roomNo, 0, groupRoomCount - 1);
 		}
-		DEBUG_PRINT(currGrpNr);
+		DEBUG_PRINT(activeGrpNr);
 		DEBUG_PRINTLN(".");
 		roomWasChanged = true;
 	}
@@ -799,10 +631,6 @@ void setup()
 
 #ifdef INCLUDE_WIFI
 	//InitWifi();
-	/*
-	if (InitWifi())
-		InitBlynk();
-	*/
 #endif
 
 	DEBUG_PRINTLN("FastLED: Initializing color palettes");
@@ -817,33 +645,33 @@ void setup()
 	DEBUG_PRINTLN("FastLED: Starting LED strip");
 	startStrip();
 
-	/*
-	DEBUG_PRINTLN("FastLED: Setting up and starting single group");
-	SetEffect(currGrpNr, defaultFxNr);
-	SetColors(currGrpNr, defaultColNr);
-	startGroup(currGrpNr);
-*/
-	for (int i = groupRoomOffset; i < groupRoomCount + groupRoomOffset; i++)
+	for (int i = 0; i < groupRoomCount; i++)
 	{
+		int offsetGrpNr = groupRoomOffset + i;
 		DEBUG_PRINT("FastLED: Setting up and starting group #");
-		DEBUG_PRINTLN(i);
+		DEBUG_PRINTLN(offsetGrpNr);
 #ifdef DO_NOT_START_FX_ON_INIT
-		SetEffect(i, defaultFxNr, false);
+		bool startFx = false;
 #else
-		SetEffect(i, defaultFxNr, true);
+		bool startFx = true;
 #endif
+#ifdef FIRST_GROUP_IS_ALL_ROOMS
+		if (offsetGrpNr == groupNrAllRooms)
+			startFx = false;
+#endif
+		SetEffect(offsetGrpNr, defaultFxNr, startFx);
 #ifdef START_WITH_RANDOM_COLOR_PALETTE
 		// Random default color palette
 		int rndCol = random8(0, ColorNames.size() - 1);
-		currColNr[i] = rndCol;
-		SetColors(i, rndCol);
+		currColNr[offsetGrpNr] = rndCol;
+		SetColors(offsetGrpNr, rndCol);
 #else
 		// Static default color palette
-		SetColors(i, defaultColNr);
+		SetColors(offsetGrpNr, defaultColNr);
 #endif
-		//startGroup(i);
+		//startGroup(offsetGrpNr);
 	}
-	currGrpNr = groupRoomOffset;
+	activeGrpNr = 0;
 }
 
 void lockButtons()
@@ -896,12 +724,6 @@ void loop()
 		buttonColPressed = false;
 		buttonFxPressed = false;
 		bothButtonsPressed = false;
-#ifdef INCLUDE_WIFI
-		/*
-		if (InitWifi(false, true))
-			InitBlynk();
-		*/
-#endif
 	}
 	else
 	{
@@ -931,7 +753,7 @@ void loop()
 			{
 				lockButtons();
 				DEBUG_PRINTLN("Loop: button 'Start/Stop' pressed and released.");
-				StartStopEffect(currGrpNr);
+				StartStopEffect(activeGrpNr);
 			}
 			buttonStartStopPressed = false;
 		}
@@ -945,9 +767,10 @@ void loop()
 
 	if (roomWasChanged)
 	{
+		int offsetGrpNr = groupRoomOffset + activeGrpNr;
 		// Visual feedback which room was changed
-		NeoGroup *neoGroup = &(neoGroups.at(currGrpNr));
-		for (int p = 0; p < 2; p++)
+		NeoGroup *neoGroup = &(neoGroups.at(offsetGrpNr));
+		for (int p = 0; p < 2; p++) // flash 2 times
 		{
 			neoGroup->FillPixels(0, neoGroup->LedCount, CRGB::White);
 			FastLED.show();
@@ -961,9 +784,10 @@ void loop()
 
 	bool isActiveMainGrp = false;
 	bool ledsUpdated = false;
-	for (int i = groupRoomOffset; i < groupRoomCount + groupRoomOffset; i++)
+	for (int i = 0; i < groupRoomCount; i++)
 	{
-		NeoGroup *neoGroup = &(neoGroups.at(i));
+		int offsetGrpNr = groupRoomOffset + i;
+		NeoGroup *neoGroup = &(neoGroups.at(offsetGrpNr));
 		if ((neoGroup->LedFirstNr + neoGroup->LedCount) <= PIXEL_COUNT)
 		{
 #ifdef DEBUG_LOOP
@@ -975,27 +799,12 @@ void loop()
 			ledsUpdated |= neoGroup->Update();
 		}
 
-		if (i == groupRoomOffset - 1) // is all rooms' LED group?
+#ifdef FIRST_GROUP_IS_ALL_ROOMS
+		if (groupNrAllRooms >= 0 && offsetGrpNr == groupNrAllRooms) // is all rooms' LED group?
 			isActiveMainGrp = neoGroup->Active;
-		if (i > (groupRoomOffset - 1) && isActiveMainGrp)
+		if (isActiveMainGrp && offsetGrpNr > groupNrAllRooms)
 			break; // Don't update other groups if main group (all LEDs) is active
 	}
-#ifdef INCLUDE_WIFI
-/*
-	else
-	{
-		static int lastBlynkUpdate = 0;
-		if ((millis() - lastBlynkUpdate) > 50)
-		{
-			lastBlynkUpdate = millis();
-			//DEBUG_PRINTLN("Loop: Blynk.Run()");
-			if (WiFi.status() == WL_CONNECTED)
-			{
-				Blynk.run();
-			}
-		}
-	}
-	*/
 #endif
 
 	// Cycle palette of group at corresponding status LED
@@ -1010,15 +819,16 @@ void loop()
 		DEBUG_PRINT(statusIdx);
 		DEBUG_PRINT(")...");
 #endif
-		NeoGroup *neoGroupStatus = &(neoGroups.at(1));
-		for (int i = 0; i < groupRoomCount; i++)
+		NeoGroup *neoGroupStatus = &(neoGroups.at(groupNrStatus));
+		for (int statusLedNr = 0; statusLedNr < groupRoomCount; statusLedNr++)
 		{
+			int offsetGrpNr = groupRoomOffset + statusLedNr;
 #ifdef DEBUG_LOOP
-			DEBUG_PRINT(i);
+			DEBUG_PRINT(statusLedNr);
 #endif
-			NeoGroup *neoGroup = &(neoGroups.at(i + groupRoomOffset));
+			NeoGroup *neoGroup = &(neoGroups.at(offsetGrpNr));
 			uint8_t currentBrightness = statusBrightness;
-			if (i == (currGrpNr - groupRoomOffset))
+			if (statusLedNr == activeGrpNr)
 			{
 				currentBrightness = quadwave8(currentBrightnessIdx);
 				currentBrightness = 15 + currentBrightness - (currentBrightness >> 4);
@@ -1026,7 +836,8 @@ void loop()
 				DEBUG_PRINT("(active)");
 #endif
 			}
-			if (!neoGroup->Active)
+			if (!neoGroup->Active ||
+				(isActiveMainGrp && offsetGrpNr != groupNrAllRooms)) // If "All Rooms" is active, show others as inactive
 			{
 				// lower brightness of status LED if FX for group is not running
 				currentBrightness = currentBrightness >> 2;
@@ -1045,9 +856,14 @@ void loop()
 				(neoGroup->Active)
 					? neoGroup->GetColorFromPaletteAt(statusIdx, currentBrightness)
 					: neoGroup->GetColorFromPaletteAt(0, currentBrightness);
-			neoGroupStatus->SetPixel(i, statusColor);
+#ifdef FIRST_GROUP_IS_ALL_ROOMS
+			if (isActiveMainGrp && offsetGrpNr != groupNrAllRooms)
+			{
+				statusColor = CRGB(0x303030); // grey if "All rooms" group is active
+			}
+#endif
+			neoGroupStatus->SetPixel(statusLedNr, statusColor);
 #ifdef DEBUG_LOOP
-			DEBUG_PRINT(i);
 			DEBUG_PRINT("...");
 #endif
 		}
@@ -1055,7 +871,7 @@ void loop()
 		DEBUG_PRINTLN("DONE");
 #endif
 		statusIdx++;
-		currentBrightnessIdx += 3;
+		currentBrightnessIdx += activeGroupBrightnessCycleSpeed;
 		ledsUpdated = true;
 		lastUpdate = millis();
 	}
