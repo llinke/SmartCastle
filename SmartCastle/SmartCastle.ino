@@ -11,6 +11,8 @@
 //#define INCLUDE_WIFI
 #define FIRST_GROUP_IS_ALL_ROOMS
 //#define START_WITH_RANDOM_COLOR_PALETTE
+//#define ENABLE_RANDOM_FX
+//#define ENABLE_RANDOM_COL
 //#define DO_NOT_START_FX_ON_INIT
 //#define DEBUG_LOOP
 
@@ -67,8 +69,10 @@ const std::vector<int> groupRoomSizes = {16, 16, 16, 32, 16, 16, 16};
 //const std::vector<int> groupRoomSizes = {4, 8, 12, 16, 16, 20, 24, 28};
 const std::vector<int> groupRoomSizes = {8, 24, 10, 22, 12, 20, 14, 18};
 #endif
-const std::vector<int> mapRoomToStatusLed = {7, 6, 5, 4, 0, 1, 2, 3};
-const std::vector<int> mapI2cButtonToRoom = {4, 5, 6, 7, 0, 1, 2, 3};
+
+const std::vector<int> mapRoomToStatusLed = {3, 2, 1, 0, 4, 5, 6, 7};
+const std::vector<int> mapI2cButtonToRoom = {4, 5, 6, 7, 3, 2, 1, 0};
+
 int groupRoomTotalSize = 0;
 int groupRoomCount = 0;
 int groupRoomOffset = 1;
@@ -104,6 +108,10 @@ static volatile bool buttonFxPressed = false;
 static volatile bool buttonColPressed = false;
 static volatile bool bothButtonsPressed = false;
 
+// **************************************************
+// *** Helper methods
+// **************************************************
+#pragma region Event Handlers
 #ifdef INCLUDE_WIFI
 bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 {
@@ -162,6 +170,7 @@ bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 }
 #endif
 
+// [FastLED Helper methods]
 int initStrip(bool doStart = false, bool playDemo = true)
 {
 	if (ledsInitialized)
@@ -226,13 +235,13 @@ int initStrip(bool doStart = false, bool playDemo = true)
 	DEBUG_PRINTLN("Adding special groups.");
 	neoGroups.clear();
 	// Group 0: all LEDs
-	addGroup("  All LEDs' group", 0, PIXEL_COUNT, 0);
+	addGroup("All LEDs' group", 0, PIXEL_COUNT, 0);
 	groupNrAllLeds = neoGroups.size() - 1;
 	// Group 1: Status LEDs
-	addGroup("  Status LEDs' group", 0, groupStatusCount, 0);
+	addGroup("Status LEDs' group", 0, groupStatusCount, 0);
 	groupNrStatus = neoGroups.size() - 1;
 #ifdef FIRST_GROUP_IS_ALL_ROOMS
-	addGroup("  All rooms' LED group", groupStatusCount, groupRoomTotalSize, 0);
+	addGroup("All rooms' LED group", groupStatusCount, groupRoomTotalSize, 0);
 	groupNrAllRooms = neoGroups.size() - 1;
 #endif
 	groupRoomOffset = groupNrAllRooms >= 0 ? groupNrAllRooms : neoGroups.size();
@@ -356,21 +365,28 @@ int setGrpColors(
 	return result;
 }
 
+// [Event handling helper methods]
 void StartStopEffect(int grpNr)
 {
+	int offsetGrpNr = groupRoomOffset + grpNr;
 	DEBUG_PRINTLN("StartStopEffect ---------------------------------------------");
-	DEBUG_PRINT("Fx: Configuring LED FX status for group #");
-	DEBUG_PRINT(grpNr);
+	DEBUG_PRINT("Fx: Starting/stopping group #");
+	DEBUG_PRINT(offsetGrpNr);
 	DEBUG_PRINT(": ");
 
-	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
+	NeoGroup *neoGroup = &(neoGroups.at(offsetGrpNr));
 	DEBUG_PRINT(neoGroup->Active);
 	DEBUG_PRINT("->");
-	DEBUG_PRINT(!(neoGroup->Active));
+	DEBUG_PRINTLN(!(neoGroup->Active));
+	bool stopNow = false;
+#ifdef FIRST_GROUP_IS_ALL_ROOMS
+	if (offsetGrpNr == groupNrAllRooms)
+		stopNow = true; // Main group cannot be faded out, causes flickering
+#endif
 	if (neoGroup->Active)
-		stopGroup(grpNr);
+		stopGroup(offsetGrpNr, stopNow);
 	else
-		startGroup(grpNr);
+		startGroup(offsetGrpNr);
 }
 
 void SetEffect(int grpNr, int fxNr, bool startFx = false)
@@ -496,7 +512,13 @@ void NextEffect(int nextFx = -1)
 		currFxNr.at(offsetGrpNr) = nextFx;
 	}
 	if (currFxNr.at(offsetGrpNr) > maxFxNr)
+	{
+#ifdef ENABLE_RANDOM_FX
 		currFxNr.at(offsetGrpNr) = 0;
+#else
+		currFxNr.at(offsetGrpNr) = 1;
+#endif
+	}
 	DEBUG_PRINT("CONTROL: Button 'FX' pressed, changing effect number to: ");
 	DEBUG_PRINTLN(currFxNr.at(offsetGrpNr));
 	SetEffect(offsetGrpNr, currFxNr.at(offsetGrpNr), true);
@@ -514,15 +536,23 @@ void NextColor(int nextCol = -1)
 		currColNr.at(offsetGrpNr) = nextCol;
 	}
 	if (currColNr.at(offsetGrpNr) > maxColNr)
+	{
+#ifdef ENABLE_RANDOM_FX
 		currColNr.at(offsetGrpNr) = 0;
+#else
+		currColNr.at(offsetGrpNr) = 1;
+#endif
+	}
 	DEBUG_PRINT("CONTROL: Button 'Colors' pressed, changing color number to: ");
 	DEBUG_PRINTLN(currColNr.at(offsetGrpNr));
 	SetColors(offsetGrpNr, currColNr.at(offsetGrpNr));
 }
+#pragma endregion
 
 // **************************************************
 // *** Event Handlers (Buttons, Tickers)
 // **************************************************
+#pragma region Event Handlers
 // [I2C Expander Interrupt Service Routine]
 void ISRgateway()
 {
@@ -531,23 +561,6 @@ void ISRgateway()
 	//expander.checkForInterrupt();
 	//DEBUG_PRINTLN("PCF8574: change of buttons' state detected in ISRgateway.");
 	//os_intr_unlock();
-}
-
-void onButtonStartStop()
-{
-	buttonStartStopPressed = true;
-}
-void onButtonFx()
-{
-	buttonFxPressed = true;
-	if (buttonFxPressed && buttonColPressed)
-		bothButtonsPressed = true;
-}
-void onButtonCol()
-{
-	buttonColPressed = true;
-	if (buttonFxPressed && buttonColPressed)
-		bothButtonsPressed = true;
 }
 
 void changeToRoom(int roomNo = -1)
@@ -583,6 +596,54 @@ void onButton6() { changeToRoom(mapI2cButtonToRoom.at(5)); }
 void onButton7() { changeToRoom(mapI2cButtonToRoom.at(6)); }
 void onButton8() { changeToRoom(mapI2cButtonToRoom.at(7)); }
 
+// [Directly connected buttons]
+void onButtonStartStop()
+{
+	buttonStartStopPressed = true;
+}
+void onButtonFx()
+{
+	buttonFxPressed = true;
+	if (buttonFxPressed && buttonColPressed)
+		bothButtonsPressed = true;
+}
+void onButtonCol()
+{
+	buttonColPressed = true;
+	if (buttonFxPressed && buttonColPressed)
+		bothButtonsPressed = true;
+}
+
+// [Button locking]
+void lockButtons()
+{
+	buttonsLocked = true;
+	buttonsLockedAt = millis();
+}
+
+bool areButtonsLocked()
+{
+	if (buttonsLocked)
+	{
+		uint32_t lockedAgo = buttonsLockedAt > 0 ? millis() - buttonsLockedAt : buttonLockDuration;
+		if (lockedAgo < buttonLockDuration)
+		{
+			DEBUG_PRINT("Buttons STILL LOCKED, locked just ");
+			DEBUG_PRINT(lockedAgo);
+			DEBUG_PRINTLN("ms ago...");
+			return true;
+		}
+		buttonsLocked = false;
+	}
+	//DEBUG_PRINTLN("Buttons not locked.");
+	return false;
+}
+#pragma endregion
+
+// **************************************************
+// *** Application Setuo
+// **************************************************
+#pragma region Application Setup
 void setup()
 {
 	Serial.begin(115200);
@@ -675,31 +736,12 @@ void setup()
 	}
 	activeGrpNr = 0;
 }
+#pragma endregion
 
-void lockButtons()
-{
-	buttonsLocked = true;
-	buttonsLockedAt = millis();
-}
-
-bool areButtonsLocked()
-{
-	if (buttonsLocked)
-	{
-		uint32_t lockedAgo = buttonsLockedAt > 0 ? millis() - buttonsLockedAt : buttonLockDuration;
-		if (lockedAgo < buttonLockDuration)
-		{
-			DEBUG_PRINT("Buttons STILL LOCKED, locked just ");
-			DEBUG_PRINT(lockedAgo);
-			DEBUG_PRINTLN("ms ago...");
-			return true;
-		}
-		buttonsLocked = false;
-	}
-	//DEBUG_PRINTLN("Buttons not locked.");
-	return false;
-}
-
+// **************************************************
+// *** Application Loop
+// **************************************************
+#pragma region Application Loop
 // Main loop
 void loop()
 {
@@ -790,6 +832,28 @@ void loop()
 	{
 		int offsetGrpNr = groupRoomOffset + i;
 		NeoGroup *neoGroup = &(neoGroups.at(offsetGrpNr));
+
+#ifdef FIRST_GROUP_IS_ALL_ROOMS
+		if (groupNrAllRooms >= 0 && offsetGrpNr == groupNrAllRooms) // is all rooms' LED group?
+		{
+			isActiveMainGrp = neoGroup->Active;
+#ifdef DEBUG_LOOP
+/*
+			DEBUG_PRINT("Loop: Main group active -> ");
+			DEBUG_PRINTLN(isActiveMainGrp);
+*/
+#endif
+		}
+		if (isActiveMainGrp && offsetGrpNr > groupNrAllRooms)
+		{
+#ifdef DEBUG_LOOP
+			DEBUG_PRINT("Loop: Skipping room from #");
+			DEBUG_PRINTLN(i);
+#endif
+			break; // Don't update other groups if main group (all LEDs) is active
+		}
+#endif
+
 		if ((neoGroup->LedFirstNr + neoGroup->LedCount) <= PIXEL_COUNT)
 		{
 #ifdef DEBUG_LOOP
@@ -800,14 +864,7 @@ void loop()
 #endif
 			ledsUpdated |= neoGroup->Update();
 		}
-
-#ifdef FIRST_GROUP_IS_ALL_ROOMS
-		if (groupNrAllRooms >= 0 && offsetGrpNr == groupNrAllRooms) // is all rooms' LED group?
-			isActiveMainGrp = neoGroup->Active;
-		if (isActiveMainGrp && offsetGrpNr > groupNrAllRooms)
-			break; // Don't update other groups if main group (all LEDs) is active
 	}
-#endif
 
 	// Cycle palette of group at corresponding status LED
 	static unsigned long lastUpdate = 0;
@@ -833,7 +890,8 @@ void loop()
 			if (statusForRoomNr == activeGrpNr)
 			{
 				currentBrightness = quadwave8(currentBrightnessIdx);
-				currentBrightness = 15 + currentBrightness - (currentBrightness >> 4);
+				//currentBrightness = 15 + currentBrightness - (currentBrightness >> 4);
+				currentBrightness = 7 + currentBrightness - (currentBrightness >> 5);
 #ifdef DEBUG_LOOP
 				DEBUG_PRINT("(active)");
 #endif
@@ -842,7 +900,7 @@ void loop()
 				(isActiveMainGrp && offsetGrpNr != groupNrAllRooms)) // If "All Rooms" is active, show others as inactive
 			{
 				// lower brightness of status LED if FX for group is not running
-				currentBrightness = currentBrightness >> 2;
+				currentBrightness = currentBrightness >> 3;
 #ifdef DEBUG_LOOP
 				DEBUG_PRINT("(off)");
 #endif
@@ -861,7 +919,7 @@ void loop()
 #ifdef FIRST_GROUP_IS_ALL_ROOMS
 			if (isActiveMainGrp && offsetGrpNr != groupNrAllRooms)
 			{
-				statusColor = CRGB(0x303030); // grey if "All rooms" group is active
+				statusColor = CRGB(0x101010); // grey if inactive or "All rooms" group is active
 			}
 #endif
 			neoGroupStatus->SetPixel(mapRoomToStatusLed.at(statusForRoomNr), statusColor);
@@ -891,3 +949,4 @@ void loop()
 		areButtonsLocked();
 	*/
 }
+#pragma endregion
