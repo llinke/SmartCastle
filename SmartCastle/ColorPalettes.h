@@ -219,9 +219,9 @@ void InitColorPalettes()
         //AddColorPalette("Adjacent_" + String(hue), AdjacentPaletteFromHue(hue), false);
         //AddColorPalette("Triad_" + String(hue), TriadPaletteFromHue(hue), false);
         AddColorPalette("Analogous_" + String(hue), AnalogousPaletteFromHue(hue), false);
-        //AddColorPalette("AdjacentCompl_" + String(hue), AdjacentPaletteFromHue(hue, true), false);
-        //AddColorPalette("TriadCompl_" + String(hue), TriadPaletteFromHue(hue, true), false);
-        AddColorPalette("AnalogousCompl_" + String(hue), AnalogousPaletteFromHue(hue, true), false);
+        //AddColorPalette("Adjacent_" + String(hue) + "_C", AdjacentPaletteFromHue(hue, true), false);
+        //AddColorPalette("Triad_" + String(hue) + "_C", TriadPaletteFromHue(hue, true), false);
+        AddColorPalette("Analogous" + String(hue) + "_C", AnalogousPaletteFromHue(hue, true), false);
     }
 
     // Add some more pretty palettes :-)

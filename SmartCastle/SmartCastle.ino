@@ -105,6 +105,8 @@ static volatile bool buttonFxPressed = false;
 static volatile bool buttonColPressed = false;
 static volatile bool bothButtonsPressed = false;
 
+volatile bool updateOledRequired = false;
+
 // **************************************************
 // *** Helper methods
 // **************************************************
@@ -238,7 +240,7 @@ int initStrip(bool doStart = false, bool playDemo = true)
 	addGroup("Status LEDs' group", 0, groupStatusCount, 0);
 	groupNrStatus = neoGroups.size() - 1;
 #ifdef FIRST_GROUP_IS_ALL_ROOMS
-	addGroup("All rooms' LED group", groupStatusCount, groupRoomTotalSize, 0);
+	addGroup("Schloss", groupStatusCount, groupRoomTotalSize, 0);
 	groupNrAllRooms = neoGroups.size() - 1;
 #endif
 	groupRoomOffset = groupNrAllRooms >= 0 ? groupNrAllRooms : neoGroups.size();
@@ -248,7 +250,7 @@ int initStrip(bool doStart = false, bool playDemo = true)
 	int nextGroupStart = groupStatusCount; // Start after status LEDs
 	for (int i = 0; i < groupRoomSizes.size(); i++)
 	{
-		String roomName = "Room " + String(i + 1);
+		String roomName = "Raum " + String(i + 1);
 		DEBUG_PRINT("  Adding '");
 		DEBUG_PRINT(roomName);
 		DEBUG_PRINT("' at ");
@@ -316,6 +318,9 @@ int startGroup(int grpNr)
 {
 	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
 	neoGroup->Start();
+
+	updateOledRequired = true;
+
 	return 0;
 }
 
@@ -323,6 +328,9 @@ int stopGroup(int grpNr, bool stopNow = false)
 {
 	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
 	neoGroup->Stop(stopNow);
+
+	updateOledRequired = true;
+
 	return 0;
 }
 
@@ -345,6 +353,9 @@ int setGrpEffect(
 
 	uint16_t result = neoGroup->ConfigureEffect(pattern, length, fxGlitter, fxFps, direction, mirror);
 	//neoGroup->Start();
+
+	updateOledRequired = true;
+
 	return result;
 }
 
@@ -359,6 +370,9 @@ int setGrpColors(
 	//neoGroup->Stop();
 	uint16_t result = neoGroup->ConfigureColors(colors, clearFirst, generatePalette, crossFade);
 	//neoGroup->Start();
+
+	updateOledRequired = true;
+
 	return result;
 }
 
@@ -547,6 +561,74 @@ void NextColor(int nextCol = -1)
 #pragma endregion
 
 // **************************************************
+// *** OLED Display
+// **************************************************
+#pragma region OLED Display
+//#ifdef i2cOLED
+// [Update OLED Display]
+void drawDisplay()
+{
+	int offsetGrpNr = groupRoomOffset + activeGrpNr;
+	NeoGroup *neoGroup = &(neoGroups.at(offsetGrpNr));
+	int fxNr = currFxNr[offsetGrpNr];
+	String fxPatternName = "???";
+	switch (fxNr)
+	{
+	case 1: // Wave
+		fxPatternName = "Welle";
+		break;
+	case 2: // Dynamic Wave
+		fxPatternName = "Dynamisch";
+		break;
+	case 3: // Noise
+		fxPatternName = "Plasma";
+		break;
+	case 4: // confetti
+		fxPatternName = "Konfetti";
+		break;
+	case 5: // Fade
+		fxPatternName = "Blenden";
+		break;
+	default:
+		fxPatternName = "Statisch";
+		break;
+	}
+	int colNr = currColNr[offsetGrpNr];
+	String fxColorName = ColorNames[colNr - 1];
+
+	DEBUG_PRINTLN("----------------------------------------");
+	DEBUG_PRINTLN("--- Updating OLED display.");
+	DEBUG_PRINTLN("----------------------------------------");
+	DEBUG_PRINTLN("--- " + neoGroup->GroupID);
+	DEBUG_PRINTLN("--- " + fxPatternName);
+	DEBUG_PRINTLN("--- " + fxColorName);
+	DEBUG_PRINTLN("----------------------------------------");
+
+#ifdef i2cOLED
+	// clear the display
+	display.clear();
+
+	display.setColor(OLEDDISPLAY_COLOR::WHITE);
+	display.setFont(Nimbus_Sans_L_Regular_Condensed_32);
+	display.setTextAlignment(TEXT_ALIGN_CENTER);
+	display.drawString(64, 0, neoGroup->GroupID);
+
+	display.drawHorizontalLine(0, 32, 128);
+
+	display.setColor(OLEDDISPLAY_COLOR::WHITE);
+	display.setFont(Dialog_plain_12);
+	display.setTextAlignment(TEXT_ALIGN_CENTER);
+	display.drawString(64, 32, fxPatternName);
+	display.drawString(64, 48, fxColorName);
+
+	// write the buffer to the display
+	display.display();
+#endif
+}
+//#endif
+#pragma endregion
+
+// **************************************************
 // *** Event Handlers (Buttons, Tickers)
 // **************************************************
 #pragma region Event Handlers
@@ -582,6 +664,8 @@ void changeToRoom(int roomNo = -1)
 		DEBUG_PRINT(activeGrpNr);
 		DEBUG_PRINTLN(".");
 		roomWasChanged = true;
+
+		updateOledRequired = true;
 	}
 }
 void onButton1() { changeToRoom(mapI2cButtonToRoom.at(0)); }
@@ -656,11 +740,20 @@ void setup()
 	pinMode(BUTTON_PIN_COL, INPUT_PULLUP);
 	attachInterrupt(BUTTON_PIN_COL, onButtonCol, FALLING);
 
+#ifdef i2cOLED
+	// Initialize OLED display
+	display.init();
+	display.flipScreenVertically();
+	//drawDisplay();
+#endif
+
 	// Wire buttons and events (I2C or directly connected)
 	DEBUG_PRINT("PCF8574: setting bus speed to ");
 	DEBUG_PRINT(I2C_BUS_SPEED);
 	DEBUG_PRINTLN(".");
+#ifndef i2cOLED
 	Wire.begin(I2C_SDA_PIN, I2C_SDC_PIN);
+#endif
 	Wire.setClock(I2C_BUS_SPEED);
 
 	DEBUG_PRINT("PCF8574: use I2C address ");
@@ -732,6 +825,10 @@ void setup()
 		//startGroup(offsetGrpNr);
 	}
 	activeGrpNr = 0;
+
+	//#ifdef i2cOLED
+	drawDisplay();
+	//#endif
 }
 #pragma endregion
 
@@ -918,6 +1015,10 @@ void loop()
 			{
 				statusColor = CRGB(0x101010); // grey if inactive or "All rooms" group is active
 			}
+			if (statusColor.r == 0 && statusColor.g == 0 && statusColor.b == 0)
+			{
+				statusColor = CRGB(currentBrightness, currentBrightness, currentBrightness);
+			}
 #endif
 			neoGroupStatus->SetPixel(mapRoomToStatusLed.at(statusForRoomNr), statusColor);
 #ifdef DEBUG_LOOP
@@ -939,6 +1040,13 @@ void loop()
 		DEBUG_PRINTLN("Loop: Refreshing LEDs.");
 #endif
 		FastLED.show();
+	}
+
+	// Update OLED display only if required
+	if (updateOledRequired)
+	{
+		drawDisplay();
+		updateOledRequired = false;
 	}
 
 	/*
