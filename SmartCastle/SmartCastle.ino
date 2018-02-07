@@ -37,9 +37,6 @@
 #include <WiFiManager.h>	  //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
 #endif
 
-// Helper macro
-#define ARRAY_SIZE(A) (sizeof(A) / sizeof((A)[0]))
-
 // **************************************************
 // *** Variable and Constamts  Declarations
 // **************************************************
@@ -88,11 +85,11 @@ int activeGrpNr = groupRoomOffset;
 struct CRGB *leds = NULL;
 bool ledsInitialized = false;
 bool ledsStarted = false;
+// 1: Wave, 2: Dynamic Wave, 3: Noise, 4: Confetti, 5: Fade,
 const int maxFxNr = 5;
-// 1: Wave, 2: Dynamic Wave, 3: Noise, 4: confetti, 5: Fade,
 const int defaultFxNr = 1;
 std::vector<int> currFxNr;
-int maxColNr = 5;
+int maxColNr = 1; // will be dynamically assigned once palettes are generated
 const int defaultColNr = 1;
 std::vector<int> currColNr;
 const int defaultFps = 50; //25;
