@@ -1,4 +1,4 @@
-//#define i2cOLED
+#define i2cOLED
 
 // **************************************************
 // *** I2C Expander

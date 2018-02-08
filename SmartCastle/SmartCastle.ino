@@ -558,6 +558,20 @@ void NextColor(int nextCol = -1)
 	DEBUG_PRINTLN(currColNr.at(offsetGrpNr));
 	SetColors(offsetGrpNr, currColNr.at(offsetGrpNr));
 }
+
+void FlashStatusLED(int grpNr, int count)
+{
+	NeoGroup *neoGroupStatus = &(neoGroups.at(groupNrStatus));
+	for (int p = 0; p < count; p++) // flash 1 time
+	{
+		neoGroupStatus->SetPixel(mapRoomToStatusLed.at(grpNr), CRGB::White);
+		FastLED.show();
+		delay(100);
+		neoGroupStatus->SetPixel(mapRoomToStatusLed.at(grpNr), CRGB::Black);
+		FastLED.show();
+		delay(100);
+	}
+}
 #pragma endregion
 
 // **************************************************
@@ -611,15 +625,28 @@ void drawDisplay()
 	display.setColor(OLEDDISPLAY_COLOR::WHITE);
 	display.setFont(Nimbus_Sans_L_Regular_Condensed_32);
 	display.setTextAlignment(TEXT_ALIGN_CENTER);
-	display.drawString(64, 0, neoGroup->GroupID);
-
-	display.drawHorizontalLine(0, 32, 128);
+	display.drawString(64, -2, neoGroup->GroupID);
 
 	display.setColor(OLEDDISPLAY_COLOR::WHITE);
 	display.setFont(Dialog_plain_12);
-	display.setTextAlignment(TEXT_ALIGN_CENTER);
-	display.drawString(64, 32, fxPatternName);
-	display.drawString(64, 48, fxColorName);
+	display.setTextAlignment(TEXT_ALIGN_LEFT);
+	display.drawString(2, 32, fxPatternName);
+	display.setTextAlignment(TEXT_ALIGN_RIGHT);
+	display.drawString(126, 47, fxColorName);
+
+	//display.drawHorizontalLine(0, 32, 128);
+	if (neoGroup->Active)
+	{
+		display.setColor(OLEDDISPLAY_COLOR::INVERSE);
+		display.fillRect(0, 0, 128, 32);
+	}
+	else
+	{
+		display.setColor(OLEDDISPLAY_COLOR::WHITE);
+		display.drawRect(0, 0, 128, 32);
+	}
+	display.setColor(OLEDDISPLAY_COLOR::WHITE);
+	display.drawRect(0, 0, 128, 64);
 
 	// write the buffer to the display
 	display.display();
@@ -872,6 +899,8 @@ void loop()
 				lockButtons();
 				DEBUG_PRINTLN("Loop: button 'FX' pressed and released.");
 				NextEffect();
+
+				FlashStatusLED(activeGrpNr, 1);
 			}
 			buttonFxPressed = false;
 		}
@@ -882,6 +911,8 @@ void loop()
 				lockButtons();
 				DEBUG_PRINTLN("Loop: button 'colors' pressed and releases.");
 				NextColor();
+
+				FlashStatusLED(activeGrpNr, 2);
 			}
 			buttonColPressed = false;
 		}
