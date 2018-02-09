@@ -531,11 +531,11 @@ class NeoGroup
 
 	void FxConfetti()
 	{
-		fadeToBlackBy(LedFirst, LedCount, 10);
+		fadeToBlackBy(LedFirst, LedCount, 16);
 		int pos = random16(LedCount);
-		//LedFirst[pos] += CHSV(fxStep + random8(64), 200, 255);
-		LedFirst[pos] += ColorFromPalette(colorPalette, fxStep + random8(64));
+		//LedFirst[pos] += ColorFromPalette(colorPalette, fxStep + random8(64));
 		//SetPixel(pos, ColorFromPalette(colorPalette, fxStep + random8(64)), MIRROR0, true);
+		SetPixel(pos, ColorFromPalette(colorPalette, fxStep + random8(64)), MIRROR0, false);
 		NextFxStep();
 	}
 

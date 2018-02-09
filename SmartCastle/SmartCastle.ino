@@ -446,6 +446,7 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 		fxPatternName = "Confetti";
 		fxPattern = pattern::CONFETTI;
 		fxGlitter = 0;
+		fxFps /= 2; // half FPS looks better
 		break;
 	case 5: // Fade
 		fxPatternName = "Fade";
