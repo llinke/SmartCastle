@@ -188,6 +188,11 @@ std::vector<CRGB> AnalogousPaletteFromHue(
     newPal.push_back(CRGB(hsvNew)); // second right analogous
     hsvNew = CHSV(hsvBase.h + dist8, 255, 255);
     newPal.push_back(CRGB(hsvNew)); // first right analogous
+    if (addCompl)
+    {
+        // stronger base color
+        newPal.push_back(CRGB(hsvBase)); // base color
+    }
     return newPal;
 }
 

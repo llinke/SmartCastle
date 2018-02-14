@@ -10,9 +10,12 @@
 // **************************************************
 // --- WiFi -----------------------------------------
 //#define INCLUDE_WIFI
+// --- Demo --------- -------------------------------
+#define PLAY_DEMO true
+#define COMET_DEMO
 // --- Rooms / Groups -------------------------------
 #define ADD_GROUP_FOR_ALL_ROOMS
-//#define GROUP_FOR_ALL_ROOMS_IS_LAST
+#define GROUP_FOR_ALL_ROOMS_IS_LAST
 //#define GROUP_FOR_ALL_ROOMS_IS_ACTIVE
 // --- FX/Colors ------------------------------------
 //#define START_WITH_RANDOM_COLOR_PALETTE
@@ -20,6 +23,7 @@
 //#define ENABLE_RANDOM_COL
 //#define DO_NOT_START_FX_ON_INIT
 // --- DEBUG ----------------------------------------
+#define DST_DEBUG
 //#define DEBUG_LOOP
 // **************************************************
 
@@ -92,8 +96,8 @@ int activeGrpNr = 0;
 struct CRGB *leds = NULL;
 bool ledsInitialized = false;
 bool ledsStarted = false;
-// 1: Wave, 2: Dynamic Wave, 3: Noise, 4: Confetti, 5: Fade,
-const int maxFxNr = 5;
+// 1: Wave, 2: Dynamic Wave, 3: Noise, 4: Confetti, 5: Fade, 6: Comet
+const int maxFxNr = 6;
 const int defaultFxNr = 1;
 std::vector<int> currFxNr;
 int maxColNr = 1; // will be dynamically assigned once palettes are generated
@@ -199,22 +203,45 @@ int initStrip(bool doStart = false, bool playDemo = true)
 
 	if (playDemo)
 	{
-		DEBUG_PRINTLN("Playing little demo effect.");
+		DEBUG_PRINT("Playing demo effect...");
+#ifdef COMET_DEMO
+		CRGBPalette16 colorPalette = NeoGroup::GenerateRGBPalette(ColorPalettes.find("Regenbogen")->second);
+		for (int dot = 0; dot < 256; dot++)
+		{
+			// Comet effect :-)
+			fadeToBlackBy(leds, PIXEL_COUNT, 8);
+			int variant = (PIXEL_COUNT / 16);
+			int pos = ease8InOutQuad(dot) + random(0 - variant, 0 + variant);
+			pos = (pos * PIXEL_COUNT) / 256;
+			pos = constrain(pos, 0, PIXEL_COUNT);
+			DEBUG_PRINT("Setting pixel #");
+			DEBUG_PRINT(pos);
+			int bright = random(64, 255);
+
+			/*
+			CRGB color = CHSV(random8(), 255, 255);
+			nblend(leds[pos], color, 128);
+			*/
+			uint8_t colpos = ((dot * PIXEL_COUNT) / 256) + random8(16);
+			nblend(leds[pos], ColorFromPalette(colorPalette, colpos, bright), 128);
+
+			FastLED.show();
+			delay(10);
+			DEBUG_PRINT(".");
+		}
+		DEBUG_PRINTLN("DONE");
+#else
 		for (int dot = 0; dot < PIXEL_COUNT; dot++)
 		{
 			leds[dot] = CHSV(random8(), 255, 255);
 			FastLED.show();
 			delay(10);
+			DEBUG_PRINT(".");
 		}
+		DEBUG_PRINTLN("DONE");
 		delay(500);
-	}
-
-#ifdef INCLUDE_WIFI
-	InitWifi();
 #endif
 
-	if (playDemo)
-	{
 		DEBUG_PRINTLN("Fading away demo effect.");
 		for (int fade = 0; fade < 20; fade++)
 		{
@@ -226,6 +253,10 @@ int initStrip(bool doStart = false, bool playDemo = true)
 		FastLED.clear(true);
 		FastLED.show();
 	}
+
+#ifdef INCLUDE_WIFI
+	InitWifi();
+#endif
 
 	DEBUG_PRINTLN("Calculating groups.");
 	groupRoomCount = groupRoomSizes.size();
@@ -267,9 +298,7 @@ int initStrip(bool doStart = false, bool playDemo = true)
 #ifdef GROUP_FOR_ALL_ROOMS_IS_LAST
 	addGroup("Schloss", groupStatusCount, groupRoomTotalSize, 0);
 	groupNrAllRooms = neoGroups.size() - 1;
-#ifdef GROUP_FOR_ALL_ROOMS_IS_ACTIVE
 	activeGrpNr = groupRoomCount - 1;
-#endif
 #endif
 #endif
 
@@ -360,7 +389,8 @@ int setGrpEffect(
 	int amountglitter = -1,
 	uint8_t fps = 0,
 	direction direction = FORWARD,
-	mirror mirror = MIRROR0)
+	mirror mirror = MIRROR0,
+	wave wave = LINEAR)
 {
 	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
 	neoGroup->Stop();
@@ -370,7 +400,7 @@ int setGrpEffect(
 	//uint8_t fxFps = fps <= 0 ? neoGroup->GetFps() : fps;
 	uint8_t fxFps = fps <= 0 ? currFps.at(grpNr) : fps;
 
-	uint16_t result = neoGroup->ConfigureEffect(pattern, length, fxGlitter, fxFps, direction, mirror);
+	uint16_t result = neoGroup->ConfigureEffect(pattern, length, fxGlitter, fxFps, direction, mirror, wave);
 	//neoGroup->Start();
 
 	updateOledRequired = true;
@@ -440,6 +470,7 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 	int fxGlitter = currGlitter.at(grpNr);
 	uint8_t fxFps = currFps.at(grpNr);
 	mirror fxMirror = MIRROR0;
+	wave fxWave = wave::LINEAR;
 
 	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
 	switch (fxNr)
@@ -472,6 +503,14 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 		fxPattern = pattern::FADE;
 		fxFps /= 2; // half FPS looks better
 		break;
+	case 6: // Comet
+		fxPatternName = "Comet";
+		fxPattern = pattern::COMET;
+		//fxWave = wave::EASE;
+		fxWave = wave::SINUS;
+		fxFps *= 1.5; // faster FPS looks better
+		fxMirror = mirror::MIRROR2;
+		break;
 	default:
 		fxPatternName = "Static";
 		fxPattern = pattern::STATIC;
@@ -488,7 +527,8 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 		fxGlitter,
 		fxFps,
 		direction::FORWARD,
-		fxMirror);
+		fxMirror,
+		fxWave);
 	if (startFx)
 		startGroup(grpNr);
 }
@@ -843,7 +883,7 @@ void setup()
 	maxColNr = ColorNames.size();
 
 	DEBUG_PRINTLN("FastLED: Initializing LED strip");
-	initStrip(true, true);
+	initStrip(true, PLAY_DEMO);
 	DEBUG_PRINT("FastLED: Amount of LEDs: ");
 	DEBUG_PRINTLN(PIXEL_COUNT);
 

@@ -23,8 +23,17 @@ enum pattern
 	NOISE,
 	RAINBOW,
 	CONFETTI,
-	FIRE
+	FIRE,
+	COMET
 };
+
+enum wave
+{
+	LINEAR,
+	SINUS,
+	EASE
+};
+
 enum direction
 {
 	FORWARD,
@@ -32,6 +41,7 @@ enum direction
 	//	OUTWARD,
 	//	IN0WARD
 };
+
 enum mirror
 {
 	MIRROR0,
@@ -49,6 +59,7 @@ class NeoGroup
 	uint16_t fxStep;
 	uint16_t totalFxSteps;
 	direction fxDirection;
+	wave fxWave;
 	int fxFadeOut = 0;
 	int fxAmountGlitter;
 	uint16_t fxLength;
@@ -93,7 +104,8 @@ class NeoGroup
 		int amountglitter = 0,
 		uint8_t fps = 50,
 		direction direction = FORWARD,
-		mirror mirror = MIRROR0)
+		mirror mirror = MIRROR0,
+		wave wave = LINEAR)
 	{
 		DEBUG_PRINTLN("CfgFX: Stopping effect execution.");
 		Stop();
@@ -102,6 +114,7 @@ class NeoGroup
 		ChangeFps(fps);
 		fxStep = 0;
 		fxDirection = direction;
+		fxWave = wave;
 		ChangeGlitter(amountglitter);
 		fxMirror = mirror;
 		fxLength = 256;
@@ -167,6 +180,15 @@ class NeoGroup
 			DEBUG_PRINTLN("'.");
 			fill_solid(LedFirst, LedCount, 0x000000);
 			effectFunc = &NeoGroup::FxFire;
+			fxAmountGlitter = 0;
+		}
+		if (pattern == COMET)
+		{
+			DEBUG_PRINT("CfgFX: Setting FX 'Comet' for group '");
+			DEBUG_PRINT(GroupID);
+			DEBUG_PRINTLN("'.");
+			fill_solid(LedFirst, LedCount, 0x000000);
+			effectFunc = &NeoGroup::FxComet;
 			fxAmountGlitter = 0;
 		}
 		return totalFxSteps;
@@ -536,6 +558,31 @@ class NeoGroup
 		//LedFirst[pos] += ColorFromPalette(colorPalette, fxStep + random8(64));
 		//SetPixel(pos, ColorFromPalette(colorPalette, fxStep + random8(64)), MIRROR0, true);
 		SetPixel(pos, ColorFromPalette(colorPalette, fxStep + random8(64)), MIRROR0, false);
+		NextFxStep();
+	}
+
+	void FxComet()
+	{
+		fadeToBlackBy(LedFirst, LedCount, 16);
+		int pos = fxStep;
+		int variant = LedCount < 64 ? (LedCount / 4) : (LedCount / 8);
+		switch (fxWave)
+		{
+		case SINUS:
+			pos = quadwave8(fxStep) + random(0 - variant, 0 + variant);
+			break;
+		case EASE:
+			pos = ease8InOutQuad(fxStep) + random(0 - variant, 0 + variant);
+			break;
+		default:
+			pos = fxStep;
+			break;
+		}
+		pos = (pos * LedCount) / 256;
+		pos = constrain(pos, 0, LedCount);
+		int bright = random(64, 255);
+		uint8_t colpos = (fxStep * 1.5) + random8(16);
+		SetPixel(pos, ColorFromPalette(colorPalette, colpos, bright), fxMirror, true);
 		NextFxStep();
 	}
 
