@@ -1,20 +1,27 @@
 /*
 * Project SmartCastle
 * Description:
-* Author:
-* Date:
+* Author: Lutz Linke
+* Date: 2018/02/14
 */
 
 // **************************************************
 // *** Compiler Flags
 // **************************************************
+// --- WiFi -----------------------------------------
 //#define INCLUDE_WIFI
-#define FIRST_GROUP_IS_ALL_ROOMS
+// --- Rooms / Groups -------------------------------
+#define ADD_GROUP_FOR_ALL_ROOMS
+//#define GROUP_FOR_ALL_ROOMS_IS_LAST
+//#define GROUP_FOR_ALL_ROOMS_IS_ACTIVE
+// --- FX/Colors ------------------------------------
 //#define START_WITH_RANDOM_COLOR_PALETTE
 //#define ENABLE_RANDOM_FX
 //#define ENABLE_RANDOM_COL
 //#define DO_NOT_START_FX_ON_INIT
+// --- DEBUG ----------------------------------------
 //#define DEBUG_LOOP
+// **************************************************
 
 // **************************************************
 // *** Includes
@@ -56,7 +63,7 @@ static volatile int buttonsLockedAt = 0;
 static volatile bool buttonPressedOnI2C = false;
 static volatile bool roomWasChanged = false;
 
-#ifdef FIRST_GROUP_IS_ALL_ROOMS
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
 // Test 0: equally sized rooms (one less)
 const std::vector<int> groupRoomSizes = {16, 16, 16, 32, 16, 16, 16};
 #else
@@ -77,7 +84,7 @@ int groupNrAllLeds = 0;
 int groupNrAllRooms = -1;
 int groupNrStatus = 1;
 const int groupStatusCount = 8;
-int activeGrpNr = groupRoomOffset;
+int activeGrpNr = 0;
 
 // Static size
 //struct CRGB leds[PIXEL_COUNT];
@@ -222,7 +229,7 @@ int initStrip(bool doStart = false, bool playDemo = true)
 
 	DEBUG_PRINTLN("Calculating groups.");
 	groupRoomCount = groupRoomSizes.size();
-#ifdef FIRST_GROUP_IS_ALL_ROOMS
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
 	groupRoomCount++;
 #endif
 	groupRoomTotalSize = 0;
@@ -239,9 +246,11 @@ int initStrip(bool doStart = false, bool playDemo = true)
 	// Group 1: Status LEDs
 	addGroup("Status LEDs' group", 0, groupStatusCount, 0);
 	groupNrStatus = neoGroups.size() - 1;
-#ifdef FIRST_GROUP_IS_ALL_ROOMS
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
+#ifndef GROUP_FOR_ALL_ROOMS_IS_LAST
 	addGroup("Schloss", groupStatusCount, groupRoomTotalSize, 0);
 	groupNrAllRooms = neoGroups.size() - 1;
+#endif
 #endif
 	groupRoomOffset = groupNrAllRooms >= 0 ? groupNrAllRooms : neoGroups.size();
 	activeGrpNr = 0;
@@ -251,15 +260,18 @@ int initStrip(bool doStart = false, bool playDemo = true)
 	for (int i = 0; i < groupRoomSizes.size(); i++)
 	{
 		String roomName = "Raum " + String(i + 1);
-		DEBUG_PRINT("  Adding '");
-		DEBUG_PRINT(roomName);
-		DEBUG_PRINT("' at ");
-		DEBUG_PRINT(nextGroupStart);
-		DEBUG_PRINT("  with size ");
-		DEBUG_PRINTLN(groupRoomSizes[i]);
 		addGroup(roomName, nextGroupStart, groupRoomSizes[i], 0);
 		nextGroupStart += groupRoomSizes[i];
 	}
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
+#ifdef GROUP_FOR_ALL_ROOMS_IS_LAST
+	addGroup("Schloss", groupStatusCount, groupRoomTotalSize, 0);
+	groupNrAllRooms = neoGroups.size() - 1;
+#ifdef GROUP_FOR_ALL_ROOMS_IS_ACTIVE
+	activeGrpNr = groupRoomCount - 1;
+#endif
+#endif
+#endif
 
 	return doStart ? startStrip() : PIXEL_COUNT;
 }
@@ -295,6 +307,13 @@ int addGroup(String grpId, int ledFirst, int ledCount, int ledOffset)
 		(ledCount <= 0) ||
 		(ledFirst + ledCount) > PIXEL_COUNT)
 		return -((((3 * 1000) + ledFirst) * 1000) + ledCount); // Invalid parameter
+
+	DEBUG_PRINT("Adding group '");
+	DEBUG_PRINT(grpId);
+	DEBUG_PRINT("' at ");
+	DEBUG_PRINT(ledFirst);
+	DEBUG_PRINT(" with size ");
+	DEBUG_PRINTLN(ledCount);
 
 	// V1: new NeoGroup
 	//NeoGroup *newGroup = new NeoGroup(grpId, ledFirst, ledCount, ledOffset);
@@ -390,7 +409,7 @@ void StartStopEffect(int grpNr)
 	DEBUG_PRINT("->");
 	DEBUG_PRINTLN(!(neoGroup->Active));
 	bool stopNow = false;
-#ifdef FIRST_GROUP_IS_ALL_ROOMS
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
 	if (offsetGrpNr == groupNrAllRooms)
 		stopNow = true; // Main group cannot be faded out, causes flickering
 #endif
@@ -612,7 +631,12 @@ void drawDisplay()
 	String fxColorName = ColorNames[colNr - 1];
 
 	DEBUG_PRINTLN("----------------------------------------");
-	DEBUG_PRINTLN("--- Updating OLED display.");
+	DEBUG_PRINT("--- Updating OLED display: ");
+#ifdef i2cOLED
+	DEBUG_PRINTLN("ENABLED");
+#else
+	DEBUG_PRINTLN("DISABLED");
+#endif
 	DEBUG_PRINTLN("----------------------------------------");
 	DEBUG_PRINTLN("--- " + neoGroup->GroupID);
 	DEBUG_PRINTLN("--- " + fxPatternName);
@@ -836,9 +860,11 @@ void setup()
 #else
 		bool startFx = true;
 #endif
-#ifdef FIRST_GROUP_IS_ALL_ROOMS
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
+#ifndef GROUP_FOR_ALL_ROOMS_IS_ACTIVE
 		if (offsetGrpNr == groupNrAllRooms)
 			startFx = false;
+#endif
 #endif
 		SetEffect(offsetGrpNr, defaultFxNr, startFx);
 #ifdef START_WITH_RANDOM_COLOR_PALETTE
@@ -852,7 +878,10 @@ void setup()
 #endif
 		//startGroup(offsetGrpNr);
 	}
-	activeGrpNr = 0;
+	//activeGrpNr = 0;
+
+	DEBUG_PRINT("FastLED: Active group #");
+	DEBUG_PRINTLN(activeGrpNr);
 
 	//#ifdef i2cOLED
 	drawDisplay();
@@ -952,31 +981,30 @@ void loop()
 		roomWasChanged = false;
 	}
 
-	bool isActiveMainGrp = false;
-	bool ledsUpdated = false;
-	for (int i = 0; i < groupRoomCount; i++)
-	{
-		int offsetGrpNr = groupRoomOffset + i;
-		NeoGroup *neoGroup = &(neoGroups.at(offsetGrpNr));
-
-#ifdef FIRST_GROUP_IS_ALL_ROOMS
-		if (groupNrAllRooms >= 0 && offsetGrpNr == groupNrAllRooms) // is all rooms' LED group?
-		{
-			isActiveMainGrp = neoGroup->Active;
+	bool isActiveMainGrp =
+		(groupNrAllRooms >= 0)
+			? (&(neoGroups.at(groupNrAllRooms)))->Active
+			: false;
 #ifdef DEBUG_LOOP
 /*
 			DEBUG_PRINT("Loop: Main group active -> ");
 			DEBUG_PRINTLN(isActiveMainGrp);
 */
 #endif
-		}
-		if (isActiveMainGrp && offsetGrpNr > groupNrAllRooms)
+	bool ledsUpdated = false;
+	for (int i = 0; i < groupRoomCount; i++)
+	{
+		int offsetGrpNr = groupRoomOffset + i;
+		NeoGroup *neoGroup = &(neoGroups.at(offsetGrpNr));
+
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
+		if (isActiveMainGrp && offsetGrpNr != groupNrAllRooms)
 		{
 #ifdef DEBUG_LOOP
 			DEBUG_PRINT("Loop: Skipping room from #");
 			DEBUG_PRINTLN(i);
 #endif
-			break; // Don't update other groups if main group (all LEDs) is active
+			continue; // Don't update other groups if main group (all LEDs) is active
 		}
 #endif
 
@@ -1042,7 +1070,7 @@ void loop()
 				(neoGroup->Active)
 					? neoGroup->GetColorFromPaletteAt(statusIdx, currentBrightness)
 					: neoGroup->GetColorFromPaletteAt(0, currentBrightness);
-#ifdef FIRST_GROUP_IS_ALL_ROOMS
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
 			if (isActiveMainGrp && offsetGrpNr != groupNrAllRooms)
 			{
 				statusColor = CRGB(0x101010); // grey if inactive or "All rooms" group is active

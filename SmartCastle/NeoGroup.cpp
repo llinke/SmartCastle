@@ -10,7 +10,7 @@
 
 #define FADEOUT_DURATION 500
 #define FADEOUT_STEPS 16
-#define CROSSFADE_PALETTES true
+#define CROSSFADE_PALETTES false
 #define CROSSFADE_MAX_CHANGE_PER_STEP 16
 
 enum pattern
