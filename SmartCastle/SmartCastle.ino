@@ -16,7 +16,7 @@
 // --- Rooms / Groups -------------------------------
 #define ADD_GROUP_FOR_ALL_ROOMS
 #define GROUP_FOR_ALL_ROOMS_IS_LAST
-//#define GROUP_FOR_ALL_ROOMS_IS_ACTIVE
+#define GROUP_FOR_ALL_ROOMS_IS_ACTIVE
 // --- FX/Colors ------------------------------------
 //#define START_WITH_RANDOM_COLOR_PALETTE
 //#define ENABLE_RANDOM_FX
@@ -68,8 +68,8 @@ static volatile bool buttonPressedOnI2C = false;
 static volatile bool roomWasChanged = false;
 
 #ifdef ADD_GROUP_FOR_ALL_ROOMS
-// Test 0: equally sized rooms (one less)
-const std::vector<int> groupRoomSizes = {16, 16, 16, 32, 16, 16, 16};
+// Real room sizes
+const std::vector<int> groupRoomSizes = {13, 26, 12, 33, 14, 12, 18};
 #else
 // Test 1: equally sized rooms
 //const std::vector<int> groupRoomSizes = {16, 16, 16, 16, 16, 16, 16, 16};
@@ -78,8 +78,8 @@ const std::vector<int> groupRoomSizes = {16, 16, 16, 32, 16, 16, 16};
 const std::vector<int> groupRoomSizes = {8, 24, 10, 22, 12, 20, 14, 18};
 #endif
 
-const std::vector<int> mapRoomToStatusLed = {3, 2, 1, 0, 4, 5, 6, 7};
-const std::vector<int> mapI2cButtonToRoom = {4, 5, 6, 7, 3, 2, 1, 0};
+const std::vector<int> mapRoomToStatusLed = {0, 6, 1, 5, 4, 3, 2, 7};
+const std::vector<int> mapI2cButtonToRoom = {4, 3, 1, 7, 0, 2, 6, 5};
 
 int groupRoomTotalSize = 0;
 int groupRoomCount = 0;
@@ -99,9 +99,11 @@ bool ledsStarted = false;
 // 1: Wave, 2: Dynamic Wave, 3: Noise, 4: Confetti, 5: Fade, 6: Comet
 const int maxFxNr = 6;
 const int defaultFxNr = 1;
+const int defaultFxNrAll = 3;
 std::vector<int> currFxNr;
 int maxColNr = 1; // will be dynamically assigned once palettes are generated
-const int defaultColNr = 1;
+const int defaultColNr = 2;
+const int defaultColNrAll = 1;
 std::vector<int> currColNr;
 const int defaultFps = 50; //25;
 std::vector<int> currFps;
@@ -214,8 +216,8 @@ int initStrip(bool doStart = false, bool playDemo = true)
 			int pos = ease8InOutQuad(dot) + random(0 - variant, 0 + variant);
 			pos = (pos * PIXEL_COUNT) / 256;
 			pos = constrain(pos, 0, PIXEL_COUNT);
-			DEBUG_PRINT("Setting pixel #");
-			DEBUG_PRINT(pos);
+			//DEBUG_PRINT("Setting pixel #");
+			//DEBUG_PRINTLN(pos);
 			int bright = random(64, 255);
 
 			/*
@@ -508,8 +510,8 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 		fxPattern = pattern::COMET;
 		//fxWave = wave::EASE;
 		fxWave = wave::SINUS;
-		fxFps *= 1.5; // faster FPS looks better
-		fxMirror = mirror::MIRROR2;
+		fxFps *= 1.5;				// faster FPS looks better
+		fxMirror = mirror::MIRROR0; //mirror::MIRROR2;
 		break;
 	default:
 		fxPatternName = "Static";
@@ -895,27 +897,30 @@ void setup()
 		int offsetGrpNr = groupRoomOffset + i;
 		DEBUG_PRINT("FastLED: Setting up and starting group #");
 		DEBUG_PRINTLN(offsetGrpNr);
-#ifdef DO_NOT_START_FX_ON_INIT
-		bool startFx = false;
-#else
 		bool startFx = true;
+#ifdef DO_NOT_START_FX_ON_INIT
+		startFx = false;
 #endif
-#ifdef ADD_GROUP_FOR_ALL_ROOMS
-#ifndef GROUP_FOR_ALL_ROOMS_IS_ACTIVE
-		if (offsetGrpNr == groupNrAllRooms)
-			startFx = false;
-#endif
-#endif
-		SetEffect(offsetGrpNr, defaultFxNr, startFx);
+		bool isAllRoomsGroup = offsetGrpNr == groupNrAllRooms;
 #ifdef START_WITH_RANDOM_COLOR_PALETTE
 		// Random default color palette
 		int rndCol = random8(0, ColorNames.size() - 1);
 		currColNr[offsetGrpNr] = rndCol;
 		SetColors(offsetGrpNr, rndCol);
 #else
-		// Static default color palette
-		SetColors(offsetGrpNr, defaultColNr);
+		int currCol = isAllRoomsGroup ? defaultColNrAll : defaultColNr;
+		currColNr[offsetGrpNr] = currCol;
+		SetColors(offsetGrpNr, currCol);
 #endif
+#ifdef ADD_GROUP_FOR_ALL_ROOMS
+#ifndef GROUP_FOR_ALL_ROOMS_IS_ACTIVE
+		if (isAllRoomsGroup)
+			startFx = false;
+#endif
+#endif
+		int currFx = isAllRoomsGroup ? defaultFxNrAll : defaultFxNr;
+		currFxNr[offsetGrpNr] = currFx;
+		SetEffect(offsetGrpNr, currFx, startFx);
 		//startGroup(offsetGrpNr);
 	}
 	//activeGrpNr = 0;
