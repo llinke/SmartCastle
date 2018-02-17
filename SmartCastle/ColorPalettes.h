@@ -245,9 +245,9 @@ void InitColorPalettes()
     AddColorPalette("Pop" /*"Pop"*/, {CRGB(0xAAFF00), CRGB(0xFFAA00), CRGB(0xFF00AA), CRGB(0xAA00FF), CRGB(0x00AAFF)});
 
     // Colourlovers Dynamic Colors
-    AddColorPalette("Pinkisch" /*"hot pink"*/, SimplePaletteFromColor(CRGB(0xFF0066)));
-    AddColorPalette("Immersiv 1" /*"immensity1"*/, SimplePaletteFromColor(CRGB(0x6F9DD1)));
-    AddColorPalette("Immersiv 2" /*"immensity3"*/, SimplePaletteFromColor(CRGB(0x665467)));
+    AddColorPalette("Pinky" /*"hot pink"*/, SimplePaletteFromColor(CRGB(0xFF0066)));
+    AddColorPalette("Fröhlich 1" /*"immensity1"*/, SimplePaletteFromColor(CRGB(0x6F9DD1)));
+    AddColorPalette("Frühlich 2" /*"immensity3"*/, SimplePaletteFromColor(CRGB(0x665467)));
 
     // Colourlovers Palettes
     AddColorPalette("Blues" /*"Blues"*/, {CRGB(0x4AD8DB), CRGB(0xD30081), CRGB(0x780072), CRGB(0x1A46F4), CRGB(0x02155B)});

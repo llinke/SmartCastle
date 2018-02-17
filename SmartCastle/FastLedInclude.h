@@ -14,13 +14,13 @@ FASTLED_USING_NAMESPACE
 #define PIXEL_PIN D3
 #define PIXEL_TYPE NEOPIXEL
 
-#define PIXEL_COUNT 136
+#define PIXEL_COUNT 137
 
 #define BUTTON_PIN_START_STOP D6
 #define BUTTON_PIN_FX D5
 #define BUTTON_PIN_COL D7
 
 // Static size:
-//extern struct CRGB leds[];
+extern struct CRGB leds[];
 // Dynamic size:
-extern struct CRGB *leds;
+//extern struct CRGB *leds;

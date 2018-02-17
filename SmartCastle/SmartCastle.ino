@@ -17,6 +17,7 @@
 #define ADD_GROUP_FOR_ALL_ROOMS
 #define GROUP_FOR_ALL_ROOMS_IS_LAST
 #define GROUP_FOR_ALL_ROOMS_IS_ACTIVE
+//#define BUTTON_TOGGLE_GROUP_ON_OFF
 // --- FX/Colors ------------------------------------
 //#define START_WITH_RANDOM_COLOR_PALETTE
 //#define ENABLE_RANDOM_FX
@@ -56,7 +57,7 @@ const String wifiApName = "AP_SmartCastle";
 const int ConfigureAPTimeout = 10;
 #endif
 
-const uint8_t globalBrightness = 96;
+const uint8_t globalBrightness = 128;
 const uint8_t statusBrightness = 64;
 const uint8_t activeGroupBrightnessCycleSpeed = 3;
 
@@ -69,7 +70,7 @@ static volatile bool roomWasChanged = false;
 
 #ifdef ADD_GROUP_FOR_ALL_ROOMS
 // Real room sizes
-const std::vector<int> groupRoomSizes = {13, 26, 12, 33, 14, 12, 18};
+const std::vector<int> groupRoomSizes = {13, 26, 12, 33, 14, 12, 19};
 #else
 // Test 1: equally sized rooms
 //const std::vector<int> groupRoomSizes = {16, 16, 16, 16, 16, 16, 16, 16};
@@ -91,9 +92,9 @@ const int groupStatusCount = 8;
 int activeGrpNr = 0;
 
 // Static size
-//struct CRGB leds[PIXEL_COUNT];
+struct CRGB leds[PIXEL_COUNT];
 // Dynamic size:
-struct CRGB *leds = NULL;
+//struct CRGB *leds = NULL;
 bool ledsInitialized = false;
 bool ledsStarted = false;
 // 1: Wave, 2: Dynamic Wave, 3: Noise, 4: Confetti, 5: Fade, 6: Comet
@@ -191,8 +192,10 @@ int initStrip(bool doStart = false, bool playDemo = true)
 	}
 
 	DEBUG_PRINTLN("LEDStrip --------------------------------------------------");
+	/*	
 	DEBUG_PRINTLN("Allocating memory for LED strip data.");
 	leds = (struct CRGB *)malloc(PIXEL_COUNT * sizeof(struct CRGB));
+	*/
 	DEBUG_PRINTLN("Assigning LEDs to FastLED.");
 	FastLED.addLeds<PIXEL_TYPE, PIXEL_PIN>(leds, PIXEL_COUNT);
 	//FastLED.setMaxPowerInVoltsAndMilliamps(5,3000);
@@ -288,7 +291,9 @@ int initStrip(bool doStart = false, bool playDemo = true)
 	groupRoomOffset = groupNrAllRooms >= 0 ? groupNrAllRooms : neoGroups.size();
 	activeGrpNr = 0;
 
-	DEBUG_PRINTLN("Adding groups for rooms.");
+	DEBUG_PRINT("Adding ");
+	DEBUG_PRINT(groupRoomCount);
+	DEBUG_PRINT(" groups for rooms.");
 	int nextGroupStart = groupStatusCount; // Start after status LEDs
 	for (int i = 0; i < groupRoomSizes.size(); i++)
 	{
@@ -364,6 +369,12 @@ int addGroup(String grpId, int ledFirst, int ledCount, int ledOffset)
 	return neoGroups.size();
 }
 
+bool isGroupActive(int grpNr)
+{
+	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
+	return neoGroup->Active;
+}
+
 int startGroup(int grpNr)
 {
 	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
@@ -371,7 +382,7 @@ int startGroup(int grpNr)
 
 	updateOledRequired = true;
 
-	return 0;
+	return grpNr;
 }
 
 int stopGroup(int grpNr, bool stopNow = false)
@@ -381,7 +392,7 @@ int stopGroup(int grpNr, bool stopNow = false)
 
 	updateOledRequired = true;
 
-	return 0;
+	return grpNr;
 }
 
 int setGrpEffect(
@@ -738,29 +749,66 @@ void ISRgateway()
 
 void changeToRoom(int roomNo = -1)
 {
-	if (!areButtonsLocked())
-	{
-		lockButtons();
+	if (areButtonsLocked())
+		return;
 
-		DEBUG_PRINT("PCF8574: switching to room ");
-		DEBUG_PRINT(roomNo + 1);
-		DEBUG_PRINT("->");
-		if (roomNo < 0)
+	lockButtons();
+
+	bool wasGroupAllRooms = ((groupRoomOffset + activeGrpNr) == groupNrAllRooms);
+
+	DEBUG_PRINT("PCF8574: switching to room ");
+	DEBUG_PRINT(roomNo + 1);
+	DEBUG_PRINT("->");
+	if (roomNo < 0)
+	{
+		activeGrpNr++;
+		if (activeGrpNr >= groupRoomCount)
+			activeGrpNr = 0;
+		roomWasChanged = true;
+	}
+	else
+	{
+		roomWasChanged = (activeGrpNr != roomNo);
+		activeGrpNr = constrain(roomNo, 0, groupRoomCount - 1);
+	}
+	DEBUG_PRINT(activeGrpNr);
+	DEBUG_PRINTLN(".");
+
+	int offsetGrpNr = groupRoomOffset + activeGrpNr;
+	if (roomWasChanged)
+	{
+		// Stop group if switching from "all rooms" to single room group
+		if (wasGroupAllRooms &&
+			offsetGrpNr != groupNrAllRooms)
 		{
-			activeGrpNr++;
-			if (activeGrpNr >= groupRoomCount)
-				activeGrpNr = 0;
+			DEBUG_PRINTLN("PCF8574: Switching to other group, stopping group 'all rooms'.");
+			stopGroup(groupNrAllRooms, true);
+		}
+
+		// Start group if switching from to "all rooms" group
+		if (offsetGrpNr == groupNrAllRooms)
+		{
+			DEBUG_PRINTLN("PCF8574: Switching to group 'all rooms', starting immediately.");
+			startGroup(groupNrAllRooms);
+		}
+	}
+	else
+	{
+#ifdef BUTTON_TOGGLE_GROUP_ON_OFF
+		DEBUG_PRINTLN("PCF8574: Same group, toggling group's on/off state.");
+		// Toggle active state on/off
+		if (isGroupActive(offsetGrpNr))
+		{
+			stopGroup(offsetGrpNr);
 		}
 		else
 		{
-			activeGrpNr = constrain(roomNo, 0, groupRoomCount - 1);
+			startGroup(offsetGrpNr);
 		}
-		DEBUG_PRINT(activeGrpNr);
-		DEBUG_PRINTLN(".");
-		roomWasChanged = true;
-
-		updateOledRequired = true;
+#endif
 	}
+
+	updateOledRequired = true;
 }
 void onButton1() { changeToRoom(mapI2cButtonToRoom.at(0)); }
 void onButton2() { changeToRoom(mapI2cButtonToRoom.at(1)); }
