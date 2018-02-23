@@ -124,7 +124,7 @@ volatile bool updateOledRequired = false;
 // **************************************************
 // *** Helper methods
 // **************************************************
-#pragma region Event Handlers
+#pragma region Helper Methods
 #ifdef INCLUDE_WIFI
 bool InitWifi(bool useWifiCfgTimeout = true, bool forceReconnect = false)
 {
@@ -1051,6 +1051,18 @@ void loop()
 		}
 	}
 
+	// Update OLED display only if required
+	if (updateOledRequired)
+	{
+		drawDisplay();
+		updateOledRequired = false;
+	}
+
+	/*
+	if (buttonsLocked) // unlock buttons after a lock time passed
+		areButtonsLocked();
+	*/
+
 	if (!ledsStarted)
 	{
 		//DEBUG_PRINTLN("Loop: LEDs not started, leaving loop.");
@@ -1194,17 +1206,5 @@ void loop()
 #endif
 		FastLED.show();
 	}
-
-	// Update OLED display only if required
-	if (updateOledRequired)
-	{
-		drawDisplay();
-		updateOledRequired = false;
-	}
-
-	/*
-	if (buttonsLocked) // unlock buttons after a lock time passed
-		areButtonsLocked();
-	*/
 }
 #pragma endregion
