@@ -227,7 +227,7 @@ int initStrip(bool doStart = false, bool playDemo = true)
 			CRGB color = CHSV(random8(), 255, 255);
 			nblend(leds[pos], color, 128);
 			*/
-			uint8_t colpos = ((dot * PIXEL_COUNT) / 256) + random8(16);
+			uint8_t colpos = dot + random8(16) - 8;
 			nblend(leds[pos], ColorFromPalette(colorPalette, colpos, bright), 128);
 
 			FastLED.show();
