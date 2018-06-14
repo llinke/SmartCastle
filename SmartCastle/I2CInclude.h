@@ -1,13 +1,15 @@
 //#define i2cOLED
 
 // **************************************************
-// *** I2C Expander
+// *** I2C, OLED, Expander
 // **************************************************
 #include "Wire.h"
 #ifdef i2cOLED
 #include "SSD1306Wire.h"
-#include "fonts/Dialog_plain_12.h"
-#include "fonts/Nimbus_Sans_L_Regular_Condensed_32.h"
+// #include "fonts/Dialog_plain_12.h"
+#include "fonts/Roboto_12.h"
+#include "fonts/Roboto_Condensed_12.h"
+#include "fonts/Roboto_Condensed_32.h"
 #endif
 #include "PCF8574.h"
 

@@ -701,12 +701,12 @@ void drawDisplay()
 	display.clear();
 
 	display.setColor(OLEDDISPLAY_COLOR::WHITE);
-	display.setFont(Nimbus_Sans_L_Regular_Condensed_32);
+	display.setFont(Roboto_Condensed_32);
 	display.setTextAlignment(TEXT_ALIGN_CENTER);
 	display.drawString(64, -2, neoGroup->GroupID);
 
 	display.setColor(OLEDDISPLAY_COLOR::WHITE);
-	display.setFont(Dialog_plain_12);
+	display.setFont(Roboto_Condensed_12);
 	display.setTextAlignment(TEXT_ALIGN_LEFT);
 	display.drawString(2, 32, fxPatternName);
 	display.setTextAlignment(TEXT_ALIGN_RIGHT);
