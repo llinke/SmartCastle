@@ -1,9 +1,37 @@
+#include <Arduino.h>
 #include "SerialDebug.h"
 #include "FastLedInclude.h"
-#include <Arduino.h>
 //#include <ArduinoSTL.h>
 #include <vector>
 //#include <map>
+
+// **************************************************
+// *** Serial Debugging
+// **************************************************
+#pragma region Serial Debug
+// Uncomment to enable printing debug messages.
+#ifdef ENABLE_SERIAL_DEBUG
+//#define ENABLE_SERIAL_DEBUG_GRP
+#endif
+#define DEBUG_GRP_PRINTER Serial
+#ifdef ENABLE_SERIAL_DEBUG_GRP
+#define DEBUG_GRP_PRINT(...)                  \
+	{                                         \
+		DEBUG_GRP_PRINTER.print(__VA_ARGS__); \
+	}
+#define DEBUG_GRP_PRINTLN(...)                  \
+	{                                           \
+		DEBUG_GRP_PRINTER.println(__VA_ARGS__); \
+	}
+#else
+#define DEBUG_GRP_PRINT(...) \
+	{                        \
+	}
+#define DEBUG_GRP_PRINTLN(...) \
+	{                          \
+	}
+#endif
+#pragma endregion
 
 #define FIRE_COOLING 55
 #define FIRE_SPARKING 120
@@ -13,10 +41,12 @@
 #define CROSSFADE_PALETTES false
 #define CROSSFADE_MAX_CHANGE_PER_STEP 16
 
+#pragma region Enums
 enum pattern
 {
 	NOFX,
 	STATIC,
+	FILL,
 	FADE,
 	WAVE,
 	DYNAMICWAVE,
@@ -31,15 +61,17 @@ enum wave
 {
 	LINEAR,
 	SINUS,
-	EASE
+	/*
+	EASEIN,
+	EASEOUT,
+	*/
+	EASEINOUT
 };
 
 enum direction
 {
 	FORWARD,
-	REVERSE,
-	//	OUTWARD,
-	//	IN0WARD
+	REVERSE
 };
 
 enum mirror
@@ -48,22 +80,27 @@ enum mirror
 	MIRROR1,
 	MIRROR2
 };
+#pragma endregion
 
 class NeoGroup
 {
+#ifndef PIXEL_USE_OFFSET
 	CRGB *LedFirst;
+#endif
 	int LedOffset = 0;
 
-	uint8_t fxFps;
+	int fxFps;
 	unsigned long lastUpdate;
-	uint16_t fxStep;
-	uint16_t totalFxSteps;
+	int fxStep;
+	int fxSpeed = 1;
+
 	direction fxDirection;
 	wave fxWave;
 	int fxFadeOut = 0;
 	int fxAmountGlitter;
-	uint16_t fxLength;
+	uint8_t fxLength;
 	mirror fxMirror = MIRROR0;
+	bool onlyOnce = false;
 
 	//std::vector<CRGB> currentColors = {};
 	bool crossFadeColors = false;
@@ -79,20 +116,33 @@ class NeoGroup
 	int LedFirstNr;
 	int LedCount;
 	bool Active;
+	bool IsFadingOut()
+	{
+		return fxFadeOut > 0;
+	}
+	bool IsRunningOnce()
+	{
+		return onlyOnce;
+	}
 
+#pragma region Constructor
 	NeoGroup(String groupID, int ledFirst, int ledCount, int ledOffset = 0)
 	{
 		GroupID = groupID;
 		Active = false;
 		fxStep = 0;
+		fxSpeed = 1;
 		LedFirstNr = ledFirst;
+#ifndef PIXEL_USE_OFFSET
 		LedFirst = &leds[ledFirst];
+#endif
 		LedCount = ledCount;
 		LedOffset = ledOffset;
-		totalFxSteps = LedCount;
 		colorPalette = GenerateRGBPalette({0x000000, 0x000000});
 	}
+#pragma endregion
 
+#pragma region NeoGroup functions
 	CRGB GetColorFromPaletteAt(uint8_t idx, uint8_t brightness = 255)
 	{
 		return ColorFromPalette(colorPalette, idx, brightness);
@@ -100,98 +150,93 @@ class NeoGroup
 
 	uint16_t ConfigureEffect(
 		pattern pattern,
-		uint16_t length = 0,
 		int amountglitter = 0,
-		uint8_t fps = 50,
+		int fps = 50,
 		direction direction = FORWARD,
 		mirror mirror = MIRROR0,
-		wave wave = LINEAR)
+		wave wave = LINEAR,
+		int speed = 1)
 	{
-		DEBUG_PRINTLN("CfgFX: Stopping effect execution.");
-		Stop();
+		DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Stopping effect execution.");
+		Stop(true);
 
-		DEBUG_PRINTLN("CfgFX: Configuring effect parameters.");
+		DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Configuring effect parameters.");
 		ChangeFps(fps);
-		fxStep = 0;
 		fxDirection = direction;
+		fxStep = (fxDirection == REVERSE) ? 255 : 0;
+		fxSpeed = speed;
+		DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: direction " + fxDirection + ", starting FX at " + String(fxStep) + ".");
 		fxWave = wave;
 		ChangeGlitter(amountglitter);
 		fxMirror = mirror;
-		fxLength = 256;
-		totalFxSteps = 256;
+		fxLength = 255;
 
 		if (pattern == STATIC)
 		{
-			DEBUG_PRINT("CfgFX: Setting FX 'Static' for group '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("'.");
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Setting FX 'Static'.");
 			effectFunc = &NeoGroup::FxStatic;
-			totalFxSteps = 1;
+		}
+		if (pattern == FILL)
+		{
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Setting FX 'Fill'.");
+			effectFunc = &NeoGroup::FxFill;
 		}
 		if (pattern == FADE)
 		{
-			DEBUG_PRINT("CfgFX: Setting FX 'Fade' for group '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("'.");
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Setting FX 'Fade'.");
 			effectFunc = &NeoGroup::FxFade;
 		}
 		if (pattern == WAVE)
 		{
-			DEBUG_PRINT("CfgFX: Setting FX 'Wave' for group '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("'.");
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Setting FX 'Wave'.");
 			effectFunc = &NeoGroup::FxWave;
-			fxLength = (length == 0 ? (LedCount * 2) : length);
+			fxLength = constrain((LedCount * 1.5), 0, 255);
 		}
 		if (pattern == DYNAMICWAVE)
 		{
-			DEBUG_PRINT("CfgFX: Setting FX 'Dynamic Wave' for group '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("'.");
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Setting FX 'Dynamic Wave'.");
 			effectFunc = &NeoGroup::FxColorWaves;
 		}
 		if (pattern == NOISE)
 		{
-			DEBUG_PRINT("CfgFX: Setting FX 'Noise' for group '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("'.");
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Setting FX 'Noise'.");
 			effectFunc = &NeoGroup::FxNoise;
 		}
 		if (pattern == RAINBOW)
 		{
-			DEBUG_PRINT("CfgFX: Setting FX 'Rainbow' for group '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("'.");
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Setting FX 'Rainbow'.");
 			effectFunc = &NeoGroup::FxRainbow;
-			fxLength = (length == 0 ? (LedCount * 2) : length);
+			fxLength = constrain((LedCount * 2), 0, 255);
 		}
 		if (pattern == CONFETTI)
 		{
-			DEBUG_PRINT("CfgFX: Setting FX 'Confetti' for group '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("'.");
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Setting FX 'Confetti'.");
 			effectFunc = &NeoGroup::FxConfetti;
 			fxAmountGlitter = 0;
 		}
 		if (pattern == FIRE)
 		{
-			DEBUG_PRINT("CfgFX: Setting FX 'Fire' for group '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("'.");
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Setting FX 'Fire'.");
+#ifdef PIXEL_USE_OFFSET
+			FillPixels(0, LedCount, 0x000000);
+#else
 			fill_solid(LedFirst, LedCount, 0x000000);
+#endif
 			effectFunc = &NeoGroup::FxFire;
 			fxAmountGlitter = 0;
 		}
 		if (pattern == COMET)
 		{
-			DEBUG_PRINT("CfgFX: Setting FX 'Comet' for group '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("'.");
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgFX: Setting FX 'Comet'.");
+#ifdef PIXEL_USE_OFFSET
+			FillPixels(0, LedCount, 0x000000);
+#else
 			fill_solid(LedFirst, LedCount, 0x000000);
+#endif
 			effectFunc = &NeoGroup::FxComet;
 			fxAmountGlitter = 0;
 		}
-		return totalFxSteps;
+		return 0;
 	}
 
 	uint16_t ConfigureColors(
@@ -200,18 +245,14 @@ class NeoGroup
 		bool generatePalette = true,
 		bool crossFade = false)
 	{
-		DEBUG_PRINT("CfgColor: Configuring colors for group '");
-		DEBUG_PRINT(GroupID);
-		DEBUG_PRINTLN("'.");
+		DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgColor: Configuring colors.");
 		if (clearFirst)
 		{
-			DEBUG_PRINTLN("CfgColor: Clearing old list of colors.");
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgColor: Clearing old list of colors.");
 			currentColors.clear();
 		}
 
-		DEBUG_PRINT("CfgColor: Adding ");
-		DEBUG_PRINT(colors.size());
-		DEBUG_PRINTLN(" CRGB colors to internal list.");
+		DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgColor: Adding " + String(colors.size()) + " CRGB colors to internal list.");
 		for (CRGB color : colors)
 		{
 			currentColors.push_back(color);
@@ -221,25 +262,21 @@ class NeoGroup
 		{
 			if (currentColors.size() != 0)
 			{
-				DEBUG_PRINT("CfgColor: Generating color palette from ");
-				DEBUG_PRINT(currentColors.size());
-				DEBUG_PRINTLN(" CRGB colors.");
-
 				crossFadeColors = crossFade;
 				if (crossFadeColors)
 				{
-					DEBUG_PRINTLN("CfgColor: Crossfading to new palette.");
+					DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgColor: Crossfading to new palette.");
 					colorPaletteNew = GenerateRGBPalette(currentColors);
 				}
 				else
 				{
-					DEBUG_PRINTLN("CfgColor: Switching to new palette.");
+					DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgColor: Switching to new palette.");
 					colorPalette = GenerateRGBPalette(currentColors);
 				}
 			}
 			else
 			{
-				DEBUG_PRINTLN("CfgColor: No colors, using empty list.");
+				DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].CfgColor: No colors, using empty list.");
 				if (crossFadeColors)
 				{
 					colorPaletteNew = GenerateRGBPalette({});
@@ -253,12 +290,12 @@ class NeoGroup
 		return currentColors.size();
 	}
 
-	void ChangeFps(uint8_t fps)
+	void ChangeFps(int fps)
 	{
 		fxFps = fps;
 	}
 
-	uint8_t GetFps()
+	int GetFps()
 	{
 		return fxFps;
 	}
@@ -273,25 +310,30 @@ class NeoGroup
 		return fxAmountGlitter;
 	}
 
-	void Start()
+	void Start(bool runOnlyOnce = false)
 	{
-		DEBUG_PRINT("GRP: Starting group '");
-		DEBUG_PRINT(GroupID);
-		DEBUG_PRINTLN("'.");
+		DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].Start: Starting group.");
+		fxStep = (fxDirection == REVERSE) ? 255 : 0;
+		onlyOnce = runOnlyOnce;
+		if (onlyOnce)
+			DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].Start: Will run only ONCE.");
 		Active = true;
-		lastUpdate = 0;
+		fxFadeOut = 0;
+		lastUpdate = millis();
 	}
 
 	void Stop(bool stopNow = false)
 	{
-		DEBUG_PRINT("GRP: Stopping group '");
-		DEBUG_PRINT(GroupID);
-		DEBUG_PRINTLN("'.");
+		DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].GRP: Stopping group.");
 		Active = false;
 		fxFadeOut = (stopNow) ? 0 : FADEOUT_STEPS;
 		if (stopNow)
 		{
+#ifdef PIXEL_USE_OFFSET
+			FillPixels(0, LedCount, 0x000000);
+#else
 			fill_solid(LedFirst, LedCount, 0x000000);
+#endif
 		}
 	}
 
@@ -301,24 +343,26 @@ class NeoGroup
 		{
 			if ((millis() - lastUpdate) > (FADEOUT_DURATION / FADEOUT_STEPS))
 			{
-				/*
-				DEBUG_PRINT("GRP: Fading out group '");
-				DEBUG_PRINT(GroupID);
-				DEBUG_PRINTLN("', ");
-				DEBUG_PRINT(fxFadeOut);
-				DEBUG_PRINTLN(" steps remaing.");
-				*/
-				lastUpdate = millis();
+				DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].Update: Fading out, " + String(fxFadeOut) + " steps remaing.");
+#ifdef PIXEL_USE_OFFSET
+				fadeToBlackBy(&leds[LedFirstNr], LedCount, (1024 / FADEOUT_STEPS));
+#else
 				fadeToBlackBy(LedFirst, LedCount, (1024 / FADEOUT_STEPS));
+#endif
 				fxFadeOut--;
 				if (fxFadeOut == 0)
 				{
+#ifdef PIXEL_USE_OFFSET
+					FillPixels(0, LedCount, 0x000000);
+#else
 					fill_solid(LedFirst, LedCount, 0x000000);
+#endif
 					if (crossFadeColors)
 					{
 						colorPalette = GenerateRGBPalette({0x000000, 0x000000});
 					}
 				}
+				lastUpdate = millis();
 				return true; // LEDs updated
 			}
 			return false; // LEDs not updated
@@ -326,23 +370,16 @@ class NeoGroup
 
 		if (!Active)
 		{
-			/*
-			DEBUG_PRINT("GRP: SKIPPED update for '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("', not active.");
-			*/
+			// DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].Update: SKIPPED update, not active.");
 			return false; // LEDs not updated
 		}
 
 		int updateInterval = (1000 / fxFps);
-		if ((millis() - lastUpdate) > updateInterval)
+		int sinceLastUpdate = (millis() - lastUpdate);
+		if (sinceLastUpdate > updateInterval)
 		{
-			/*
-			DEBUG_PRINT("GRP: Updating group '");
-			DEBUG_PRINT(GroupID);
-			DEBUG_PRINTLN("'.");
-			*/
-			lastUpdate = millis();
+			// DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].Update: " + String(sinceLastUpdate) + "ms since last update, target interval: " + String(updateInterval) + "ms.");
+			// DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].Update: Updating group.");
 			if (crossFadeColors)
 			{
 				// Cross-fade to new palette
@@ -359,51 +396,61 @@ class NeoGroup
 			}
 			else
 			{
-				/*
-				DEBUG_PRINT("GRP: ERROR, no FX function set for group '");
-				DEBUG_PRINT(GroupID);
-				DEBUG_PRINTLN("'.");
-				*/
+				// DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].Update: ERROR, no FX function set.");
+				lastUpdate = millis();
 				return false;
 			}
+			NextFxStep();
+			int timesToUpdate = constrain(sinceLastUpdate / updateInterval, 1, 8); // skip max 8 steps
+			if (timesToUpdate > 1)
+			{
+				DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].Update: skipping " + String(timesToUpdate - 1) + " steps to catch up target FPS " + String(fxFps) + ".");
+				if (Active)
+					NextFxStep(timesToUpdate - 1);
+			}
+			lastUpdate = millis();
 			return true; // LEDs updated
 		}
 
 		return false; // LEDs not updated
 	}
 
-	void NextFxStep(bool invert = false)
+	void NextFxStep(int speed = 0)
 	{
 		if (fxDirection == FORWARD)
 		{
-			fxStep++;
-			if (fxStep >= totalFxSteps)
-			{
-				if (invert)
-				{
-					ReverseFxDirection();
-				}
-				else
-				{
-					fxStep = 0;
-				}
-			}
+			fxStep += speed > 0 ? speed : fxSpeed;
 		}
 		else // fxDirection == REVERSE
 		{
-			--fxStep;
-			if (fxStep < 0)
+			fxStep -= speed > 0 ? speed : fxSpeed;
+		}
+
+		if (onlyOnce)
+		{
+			// DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].NextFxStep: " +
+			// 			  "direction " + fxDirection +
+			// 			  ", current FX step " + String(fxStep) +
+			// 			  ", speed " + String(speed > 0 ? speed : fxSpeed) + ".");
+			if ((fxDirection == FORWARD && fxStep >= 255) ||
+				(fxDirection == REVERSE && fxStep <= 0))
 			{
-				if (invert)
-				{
-					ReverseFxDirection();
-				}
-				else
-				{
-					fxStep = totalFxSteps - 1;
-				}
+				DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].NextFxStep: Run only once, stopping at " + String(fxStep) + ".");
+				onlyOnce = false;
+				Stop();
 			}
 		}
+
+		while (fxStep > 255)
+		{
+			fxStep -= 256;
+		}
+		while (fxStep < 0)
+		{
+			fxStep += 256;
+		}
+
+		// DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].NextFxStep: next step >> " + String(fxStep) + ".");
 	}
 
 	void ReverseFxDirection()
@@ -411,7 +458,7 @@ class NeoGroup
 		if (fxDirection == FORWARD)
 		{
 			fxDirection = REVERSE;
-			fxStep = totalFxSteps - 1;
+			fxStep = 255;
 		}
 		else
 		{
@@ -419,72 +466,116 @@ class NeoGroup
 			fxStep = 0;
 		}
 	}
+#pragma endregion
 
+#pragma region SetPixel functions
 	void FillPixels(int pos, int count, CRGB newcolor, mirror mirror = MIRROR0, bool blend = false)
 	{
-		for (int p = pos; p < count; p++)
+		for (int p = pos; p < (pos + count); p++)
 			SetPixel(p, newcolor, mirror, blend);
 	}
 
 	void SetPixel(int pos, CRGB newcolor, mirror mirror = MIRROR0, bool blend = false)
 	{
+		int ledNormalNr = -1;
+		int ledMirrorNr = -1;
+
 		if (mirror == MIRROR1) // set even/odd as mirror values
 		{
 			int newPos = pos / 2;
-			if ((pos % 2) == 0)
-			{
-				if (blend)
-					nblend(LedFirst[CapLedPosition(newPos + LedOffset)], newcolor, 128);
-				else
-					LedFirst[CapLedPosition(newPos + LedOffset)] = newcolor;
-			}
-			else
-			{
-				int mirrorPos = LedCount - newPos - 1;
-				if (blend)
-					nblend(LedFirst[CapLedPosition(mirrorPos + LedOffset)], newcolor, 128);
-				else
-					LedFirst[CapLedPosition(mirrorPos + LedOffset)] = newcolor;
-			}
-			return;
+			ledNormalNr = ((pos % 2) != 0)
+							  ? CapLedPosition(newPos + LedOffset, LedCount)
+							  : CapLedPosition((LedCount - newPos - 1) + LedOffset, LedCount);
 		}
-
-		if (mirror == MIRROR2) // mirror each second value
+		else if (mirror == MIRROR2) // mirror each second value
 		{
 			int newPos = pos / 2;
-			if (blend)
-				nblend(LedFirst[CapLedPosition(newPos + LedOffset)], newcolor, 128);
-			else
-				LedFirst[CapLedPosition(newPos + LedOffset)] = newcolor;
 			int mirrorPos = LedCount - newPos - 1;
-			if (blend)
-				nblend(LedFirst[CapLedPosition(mirrorPos + LedOffset)], newcolor, 128);
-			else
-				LedFirst[CapLedPosition(mirrorPos + LedOffset)] = newcolor;
-			return;
+			ledNormalNr = CapLedPosition(newPos + LedOffset, LedCount);
+			ledMirrorNr = CapLedPosition(mirrorPos + LedOffset, LedCount);
+		}
+		else
+		{
+			ledNormalNr = pos + LedOffset;
 		}
 
-		// else
+#ifdef PIXEL_USE_OFFSET
+		CRGB *LedTargetNormal =
+			(ledNormalNr >= 0) ? &leds[CapLedPosition(LedFirstNr + ledNormalNr + PIXEL_OFFSET, PIXEL_COUNT)] : nullptr;
+		CRGB *LedTargetMirror =
+			(ledMirrorNr >= 0) ? &leds[CapLedPosition(LedFirstNr + ledMirrorNr + PIXEL_OFFSET, PIXEL_COUNT)] : nullptr;
+#else
+		CRGB *LedTargetNormal =
+			(ledNormalNr >= 0) ? &LedFirst[ledNormalNr] : nullptr;
+		CRGB *LedTargetMirror =
+			(ledMirrorNr >= 0) ? &LedFirst[ledMirrorNr] : nullptr;
+#endif
+
 		if (blend)
-			nblend(LedFirst[CapLedPosition(pos + LedOffset)], newcolor, 128);
+		{
+			if (ledNormalNr >= 0)
+				nblend(LedTargetNormal[0], newcolor, 128);
+			if (ledMirrorNr >= 0)
+				nblend(LedTargetMirror[0], newcolor, 128);
+		}
 		else
-			LedFirst[CapLedPosition(pos + LedOffset)] = newcolor;
+		{
+			if (ledNormalNr >= 0)
+				LedTargetNormal[0] = newcolor;
+			if (ledMirrorNr >= 0)
+				LedTargetMirror[0] = newcolor;
+		}
 	}
 
-	int CapLedPosition(int pos)
+	int CapLedPosition(int ledPos, int ledCount)
 	{
-		int newPos = pos;
-		while (newPos >= LedCount)
-			newPos -= LedCount;
+		int newPos = ledPos;
+		while (newPos >= ledCount)
+			newPos -= ledCount;
 		while (newPos < 0)
-			newPos += LedCount;
+			newPos += ledCount;
 		return newPos;
 	}
 
+	uint8_t GetEasedFxStep(uint8_t step)
+	{
+		int newStep = step;
+		switch (fxWave)
+		{
+		case SINUS:
+			newStep = quadwave8(step);
+			break;
+			/*
+		case EASEIN:
+			//newStep = ease8InOutQuad(step / 2 + step % 2) * 2 + step % 2;
+			newStep = (ease8InOutQuad(step >> 1) << 1) | (step & 0x01);
+			break;
+		case EASEOUT:
+			//newStep = (ease8InOutQuad(128 + (step / 2 + step % 2)) - 128) * 2 + step % 2;
+			newStep = (constrain(ease8InOutQuad(0x80 | (step >> 1)), 0, 0x7f)) | (step & 0x01);
+			break;
+		case EASEINOUT:
+*/
+		case EASEINOUT:
+			newStep = ease8InOutQuad(step);
+			break;
+		default:
+			newStep = fxStep;
+			break;
+		}
+		return newStep;
+	}
+#pragma endregion
+
+#pragma region Effects
 	void FxStatic()
 	{
 		CRGB newColor = ColorFromPalette(colorPalette, 0);
+#ifdef PIXEL_USE_OFFSET
+		FillPixels(0, LedCount, newColor);
+#else
 		fill_solid(LedFirst, LedCount, newColor);
+#endif
 		for (int i = 0; i < LedCount; i++)
 		{
 			SetPixel((LedCount - 1) - i, newColor);
@@ -496,10 +587,30 @@ class NeoGroup
 	{
 		CRGB newColor = ColorFromPalette(colorPalette, fxStep);
 		//fill_solid(LedFirst, LedCount, newColor);
-		for (int i = 0; i < LedCount; i++)
-		{
-			SetPixel((LedCount - 1) - i, newColor);
-		}
+		FillPixels(0, LedCount, newColor);
+
+		NextFxStep();
+	}
+
+	void FxFill()
+	{
+#ifdef PIXEL_USE_OFFSET
+	// fadeToBlackBy(&leds[LedFirstNr], LedCount, 16 * fxSpeed);
+#else
+	// fadeToBlackBy(LedFirst, LedCount, 16 * fxSpeed);
+#endif
+		int fxStep2 = (fxDirection == REVERSE) ? 255 - fxStep : fxStep;
+		// uint8_t bri = map8(GetEasedFxStep(fxStep2), 32, 255);
+		uint8_t bri = map8(scale8(fxStep2, fxStep2), 32, 255);
+		//CRGB newColor = ColorFromPalette(colorPalette, fxStep2, bri);
+		CRGB newColor = ColorFromPalette(colorPalette, fxStep2, bri);
+		//int variant = LedCount < 64 ? (LedCount / 4) : (LedCount / 8);
+
+		uint8_t pos = GetEasedFxStep(fxStep2); // + random(0 - variant, 0 + variant);
+		int ledAmount = scale8(LedCount, pos);
+		int ledPos = (fxDirection == REVERSE) ? LedCount - ledAmount : 0;
+		if (ledAmount > 0)
+			FillPixels(ledPos, ledAmount, newColor, fxMirror, false);
 
 		NextFxStep();
 	}
@@ -546,42 +657,51 @@ class NeoGroup
 	{
 		if (random8() < chanceOfGlitter)
 		{
+#ifdef PIXEL_USE_OFFSET
+			SetPixel(random16(LedCount), CRGB::White, MIRROR0, true);
+#else
 			LedFirst[random16(LedCount)] += CRGB::White;
-			//SetPixel(random16(LedCount), CRGB::White, MIRROR0, true);
+#endif
 		}
 	}
 
 	void FxConfetti()
 	{
-		fadeToBlackBy(LedFirst, LedCount, 16);
+#ifdef PIXEL_USE_OFFSET
+		fadeToBlackBy(&leds[LedFirstNr], LedCount, 16 * fxSpeed);
+#else
+		fadeToBlackBy(LedFirst, LedCount, 16 * fxSpeed);
+#endif
 		int pos = random16(LedCount);
-		//LedFirst[pos] += ColorFromPalette(colorPalette, fxStep + random8(64));
-		//SetPixel(pos, ColorFromPalette(colorPalette, fxStep + random8(64)), MIRROR0, true);
-		SetPixel(pos, ColorFromPalette(colorPalette, fxStep + random8(64)), MIRROR0, false);
+		SetPixel(pos, ColorFromPalette(colorPalette, fxStep + random8(64)), MIRROR0, false); //true);
 		NextFxStep();
 	}
 
 	void FxComet()
 	{
-		fadeToBlackBy(LedFirst, LedCount, 16);
-		int pos = fxStep;
-		int variant = LedCount < 64 ? (LedCount / 4) : (LedCount / 8);
-		switch (fxWave)
-		{
-		case SINUS:
-			pos = quadwave8(fxStep) + random(0 - variant, 0 + variant);
-			break;
-		case EASE:
-			pos = ease8InOutQuad(fxStep) + random(0 - variant, 0 + variant);
-			break;
-		default:
-			pos = fxStep;
-			break;
-		}
-		pos = (pos * LedCount) / 256;
+#ifdef PIXEL_USE_OFFSET
+		fadeToBlackBy(&leds[LedFirstNr], LedCount, 16 * fxSpeed);
+#else
+		fadeToBlackBy(LedFirst, LedCount, 16 * fxSpeed);
+#endif
+		bool isReverse = fxDirection == direction::REVERSE;
+		int fxStep2 = isReverse ? 255 - fxStep : fxStep;
+		//int variant = LedCount < 64 ? (LedCount / 4) : (LedCount / 8);
+		int variant = LedCount / 8;
+		int pos = GetEasedFxStep(fxStep2);
+		pos = constrain(pos + random(0 - variant, 0 + variant), 0, 255);
+		//pos = lerp8by8(0, LedCount, pos);
+		pos = map8(pos, 0, LedCount);
 		pos = constrain(pos, 0, LedCount);
+		if (isReverse)
+			pos = LedCount - pos;
 		int bright = random(64, 255);
-		uint8_t colpos = (fxStep * 1.5) + random8(16);
+		// uint8_t colpos = (fxStep2 * 1.5) + random8(16);
+		uint8_t colpos = fxStep2 + random8(16);
+		// DEBUG_GRP_PRINTLN("GRP[" + String(GroupID) + "].FxComet: " +
+		// 			  "step " + String(fxStep) +
+		// 			  ", pixel " + String(pos) +
+		// 			  ", color " + String(colpos) + ".");
 		SetPixel(pos, ColorFromPalette(colorPalette, colpos, bright), fxMirror, true);
 		NextFxStep();
 	}
@@ -705,18 +825,20 @@ class NeoGroup
 			uint16_t pixelnumber = i;
 			pixelnumber = (LedCount - 1) - pixelnumber;
 			/*
-			DEBUG_PRINT("FX: Getting color from palette for pixel ");
-			DEBUG_PRINT(pixelnumber);
-			DEBUG_PRINT(" at index16 ");
-			DEBUG_PRINT(index, HEX);
-			DEBUG_PRINT(" as index8 ");
-			DEBUG_PRINTLN(index8, HEX);
+			DEBUG_GRP_PRINT("GRP[" + String(GroupID) + "].FxNoise: Getting color from palette for pixel ");
+			DEBUG_GRP_PRINT(pixelnumber);
+			DEBUG_GRP_PRINT(" at index16 ");
+			DEBUG_GRP_PRINT(index, HEX);
+			DEBUG_GRP_PRINT(" as index8 ");
+			DEBUG_GRP_PRINTLN(index8, HEX);
 			*/
 			CRGB newcolor = ColorFromPalette16(colorPalette, index);
 			SetPixel(pixelnumber, newcolor, fxMirror);
 		}
 	}
+#pragma endregion
 
+#pragma region Static ColorPalette functions
 	static CRGBPalette16 GenerateRGBPalette(std::vector<CRGB> colors)
 	{
 		CRGB nc[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -835,4 +957,5 @@ class NeoGroup
 
 		return CRGB(red1, green1, blue1);
 	}
+#pragma endregion
 };

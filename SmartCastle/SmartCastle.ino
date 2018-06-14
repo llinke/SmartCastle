@@ -4,12 +4,16 @@
 * Author: Lutz Linke
 * Date: 2018/02/14
 */
+#include <Arduino.h>
 
 // **************************************************
 // *** Compiler Flags
 // **************************************************
 // --- WiFi -----------------------------------------
 //#define INCLUDE_WIFI
+// --- DEBUG ----------------------------------------
+#define ENABLE_SERIAL_DEBUG
+//#define DEBUG_LOOP
 // --- Demo --------- -------------------------------
 #define PLAY_DEMO true
 #define COMET_DEMO
@@ -23,23 +27,21 @@
 //#define ENABLE_RANDOM_FX
 //#define ENABLE_RANDOM_COL
 //#define DO_NOT_START_FX_ON_INIT
-// --- DEBUG ----------------------------------------
-#define DST_DEBUG
-//#define DEBUG_LOOP
+
 // **************************************************
 
 // **************************************************
 // *** Includes
 // **************************************************
 #include "SerialDebug.h"
-#include "I2CInclude.h"
-#include "FastLedInclude.h"
-#include "ColorPalettes.h"
-#include <Arduino.h>
 //#include <ArduinoSTL.h>
 #include <vector>
 #include <map>
 #include <string.h>
+
+#include "I2CInclude.h"
+#include "FastLedInclude.h"
+#include "ColorPalettes.h"
 #include "NeoGroup.cpp"
 
 #ifdef INCLUDE_WIFI
@@ -97,7 +99,15 @@ struct CRGB leds[PIXEL_COUNT];
 //struct CRGB *leds = NULL;
 bool ledsInitialized = false;
 bool ledsStarted = false;
-// 1: Wave, 2: Dynamic Wave, 3: Noise, 4: Confetti, 5: Fade, 6: Comet
+// 0: Wave, 1: Dynamic Wave, 2: Noise, 3: Confetti, 4: Fade, 5: Comet, 6: Orbit, 7: Fill
+const uint8_t fxNrWave = 0;
+const uint8_t fxNrDynamicWave = 1;
+const uint8_t fxNrNoise = 2;
+const uint8_t fxNrConfetti = 3;
+const uint8_t fxNrFade = 4;
+const uint8_t fxNrComet = 5;
+const uint8_t fxNrOrbit = 6;
+const uint8_t fxNrFill = 7;
 const int maxFxNr = 6;
 const int defaultFxNr = 1;
 const int defaultFxNrAll = 3;
@@ -375,10 +385,16 @@ bool isGroupActive(int grpNr)
 	return neoGroup->Active;
 }
 
-int startGroup(int grpNr)
+bool isGroupFadingOut(int grpNr)
 {
 	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
-	neoGroup->Start();
+	return !(neoGroup->Active) && (neoGroup->IsFadingOut());
+}
+
+int startGroup(int grpNr, bool runOnlyOnce = false)
+{
+	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
+	neoGroup->Start(runOnlyOnce);
 
 	updateOledRequired = true;
 
@@ -398,22 +414,22 @@ int stopGroup(int grpNr, bool stopNow = false)
 int setGrpEffect(
 	int grpNr,
 	pattern pattern,
-	uint16_t length = 0,
 	int amountglitter = -1,
-	uint8_t fps = 0,
+	int fps = 0,
 	direction direction = FORWARD,
 	mirror mirror = MIRROR0,
-	wave wave = LINEAR)
+	wave wave = LINEAR,
+	int speed = 1)
 {
 	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
-	neoGroup->Stop();
+	neoGroup->Stop(true);
 
 	//int fxGlitter = amountglitter <= 0 ? neoGroup->GetGlitter() : amountglitter;
 	int fxGlitter = amountglitter <= 0 ? currGlitter.at(grpNr) : amountglitter;
-	//uint8_t fxFps = fps <= 0 ? neoGroup->GetFps() : fps;
-	uint8_t fxFps = fps <= 0 ? currFps.at(grpNr) : fps;
+	//int fxFps = fps <= 0 ? neoGroup->GetFps() : fps;
+	int fxFps = fps > 0 ? fps : currFps.at(grpNr);
 
-	uint16_t result = neoGroup->ConfigureEffect(pattern, length, fxGlitter, fxFps, direction, mirror, wave);
+	uint16_t result = neoGroup->ConfigureEffect(pattern, fxGlitter, fxFps, direction, mirror, wave, speed);
 	//neoGroup->Start();
 
 	updateOledRequired = true;
@@ -462,67 +478,85 @@ void StartStopEffect(int grpNr)
 		startGroup(offsetGrpNr);
 }
 
-void SetEffect(int grpNr, int fxNr, bool startFx = false)
+void SetEffect(int grpNr, int fxNr,
+			   bool startFx, bool onlyOnce,
+			   direction fxDirection = direction::FORWARD,
+			   int amountGlitter = -1,
+			   int targetFps = 0,
+			   int speed = 1)
 {
 	DEBUG_PRINTLN("SetEffect ---------------------------------------------------");
-	DEBUG_PRINT("Fx: Configuring LED effect #");
-	DEBUG_PRINT(fxNr);
-	DEBUG_PRINT(" for group #");
-	DEBUG_PRINTLN(grpNr);
+	DEBUG_PRINTLN("Fx: Configuring LED effect #" + String(fxNr) + " for group #" + String(grpNr));
 
 	if (fxNr == 0)
 	{
 		DEBUG_PRINTLN("Fx: Choosing random effect.");
-		SetEffect(grpNr, random8(1, maxFxNr), startFx);
+		SetEffect(grpNr, random8(1, maxFxNr), startFx, onlyOnce);
 		return;
 	}
 
 	String fxPatternName = "";
 	pattern fxPattern = pattern::STATIC;
-	uint16_t fxLength = 255;
 	int fxGlitter = currGlitter.at(grpNr);
-	uint8_t fxFps = currFps.at(grpNr);
+	int fxFps = currFps.at(grpNr);
 	mirror fxMirror = MIRROR0;
 	wave fxWave = wave::LINEAR;
 
 	NeoGroup *neoGroup = &(neoGroups.at(grpNr));
 	switch (fxNr)
 	{
-	case 1: // Wave
+	case fxNrWave:
 		fxPatternName = "Wave";
 		fxPattern = pattern::WAVE;
-		fxLength = (neoGroup->LedCount * 1.5); // 48;
 		fxMirror = mirror::MIRROR2;
 		break;
-	case 2: // Dynamic Wave
+	case fxNrDynamicWave:
 		fxPatternName = "Dynamic Wave";
 		fxPattern = pattern::DYNAMICWAVE;
 		fxMirror = mirror::MIRROR1; // mirror::MIRROR0;
 		break;
-	case 3: // Noise
+	case fxNrNoise:
 		fxPatternName = "Noise";
 		fxPattern = pattern::NOISE;
 		fxMirror = mirror::MIRROR1; // mirror::MIRROR0;
 		fxFps *= 2;					// double FPS looks better
 		break;
-	case 4: // confetti
+	case fxNrConfetti:
 		fxPatternName = "Confetti";
 		fxPattern = pattern::CONFETTI;
 		fxGlitter = 0;
 		fxFps /= 2; // half FPS looks better
 		break;
-	case 5: // Fade
+	case fxNrFade:
 		fxPatternName = "Fade";
 		fxPattern = pattern::FADE;
 		fxFps /= 2; // half FPS looks better
 		break;
-	case 6: // Comet
+	case fxNrComet:
 		fxPatternName = "Comet";
 		fxPattern = pattern::COMET;
-		//fxWave = wave::EASE;
+		fxWave = wave::EASEINOUT;
+		// fxWave = wave::SINUS;
+		fxFps *= 3; //1.5; // faster FPS looks better
+		// fxMirror = mirror::MIRROR0;
+		fxMirror = mirror::MIRROR2;
+		break;
+	case fxNrOrbit:
+		fxPatternName = "Orbit";
+		fxPattern = pattern::COMET;
+		// fxWave = wave::EASEINOUT;
 		fxWave = wave::SINUS;
-		fxFps *= 1.5;				// faster FPS looks better
-		fxMirror = mirror::MIRROR0; //mirror::MIRROR2;
+		fxFps *= 1.5; // faster FPS looks better
+		// fxMirror = mirror::MIRROR0;
+		fxMirror = mirror::MIRROR2;
+		break;
+	case fxNrFill:
+		fxPatternName = "Fill";
+		fxPattern = pattern::FILL;
+		fxWave = wave::EASEINOUT;
+		fxFps *= 1.5; // faster FPS looks better
+		// fxMirror = mirror::MIRROR0;
+		fxMirror = mirror::MIRROR2;
 		break;
 	default:
 		fxPatternName = "Static";
@@ -530,20 +564,21 @@ void SetEffect(int grpNr, int fxNr, bool startFx = false)
 		fxMirror = mirror::MIRROR0;
 		break;
 	}
-	DEBUG_PRINT("Fx: Changing effect to '");
-	DEBUG_PRINT(fxPatternName);
-	DEBUG_PRINTLN("'");
+	if (targetFps > 0)
+		fxFps = targetFps;
+	DEBUG_PRINTLN("Fx: Changing effect to '" + String(fxPatternName) + "'");
 	setGrpEffect(
 		grpNr,
 		fxPattern,
-		fxLength,
 		fxGlitter,
 		fxFps,
-		direction::FORWARD,
+		fxDirection,
 		fxMirror,
-		fxWave);
+		fxWave,
+		speed);
 	if (startFx)
-		startGroup(grpNr);
+		startGroup(grpNr, onlyOnce);
+	DEBUG_PRINTLN("SetEffect ---------------------------------------------------");
 }
 
 void InitColorNames()
@@ -605,7 +640,7 @@ void NextEffect(int nextFx = -1)
 	}
 	DEBUG_PRINT("CONTROL: Button 'FX' pressed, changing effect number to: ");
 	DEBUG_PRINTLN(currFxNr.at(offsetGrpNr));
-	SetEffect(offsetGrpNr, currFxNr.at(offsetGrpNr), true);
+	SetEffect(offsetGrpNr, currFxNr.at(offsetGrpNr), true, false);
 }
 
 void NextColor(int nextCol = -1)
@@ -968,7 +1003,7 @@ void setup()
 #endif
 		int currFx = isAllRoomsGroup ? defaultFxNrAll : defaultFxNr;
 		currFxNr[offsetGrpNr] = currFx;
-		SetEffect(offsetGrpNr, currFx, startFx);
+		SetEffect(offsetGrpNr, currFx, startFx, false);
 		//startGroup(offsetGrpNr);
 	}
 	//activeGrpNr = 0;
@@ -1003,7 +1038,8 @@ void loop()
 	bool btnColReleased = buttonColPressed && !digitalRead(BUTTON_PIN_COL);
 	if (bothButtonsPressed &&
 		(btnFxReleased | btnColReleased) /*&&
-		WiFi.status() != WL_CONNECTED*/) // Both buttons pressed
+		WiFi.status() != WL_CONNECTED*/
+		)								 // Both buttons pressed
 	{
 		DEBUG_PRINTLN("Loop: both buttons pressed, entering WiFi-setup.");
 #ifdef INCLUDE_WIFI
